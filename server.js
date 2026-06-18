@@ -219,7 +219,7 @@ setInterval(() => {
         oyuncu.para += 50 + (toplamSivilFabrika * 2);
     });
     io.emit('stateGuncelle', gameState);
-}, 1500); 
+}, 10000); 
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
