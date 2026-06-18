@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Grand Strategy</title>
+    <style>
+        body { margin: 0; background: #051014; overflow: hidden; font-family: 'Segoe UI', sans-serif; color: white; user-select: none; }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        #ui-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 10; }
+        .panel { background: rgba(10, 25, 30, 0.95); padding: 15px; border-radius: 8px; border: 1px solid #004d40; pointer-events: auto; }
+        
+        #top-bar { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: center; }
+        
+        #detail-panel { position: absolute; top: 70px; left: 10px; width: 280px; display: none; }
+        .stat { margin: 8px 0; font-size: 15px; }
+        .btn { width: 100%; padding: 10px; margin-top: 5px; background: #2c3e50; color: white; border: 1px solid #34495e; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .btn:hover { background: #34495e; }
+        .btn-sec { background: #27ae60; border-color: #2ecc71; }
+        .btn-sec:hover { background: #2ecc71; }
+        .btn-saldiri { background: #c0392b; border-color: #e74c3c; }
+        .btn-saldiri:hover { background: #e74c3c; }
+
+        /* Bildirimlerin Şık Durması İçin */
+        #notification-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { padding: 15px 25px; border-radius: 5px; color: white; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.5s ease; pointer-events: auto; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="notification-container"></div>
+
+    <div id="ui-container">
+        <div id="top-bar" class="panel">
+            <div>👑 Ülkem: <span id="my-country" style="color:#f1c40f; font-weight:bold;">İzleyici (Ülke Seçin)</span></div>
+            <div>💰 Hazine: <span id="my-gold" style="color:#f1c40f; font-weight:bold;">0</span></div>
+            <div>📅 Gün: <span id="day-counter" style="color:#4db6ac;">1</span></div>
+            <button class="btn" style="width: auto; padding: 5px 15px;" onclick="alert('Teknoloji Ağacı Çok Yakında!')">🔬 Teknoloji</button>
+        </div>
+
+        <div id="detail-panel" class="panel">
+            <h3 id="panel-name" style="margin-top:0; color:#f1c40f;">Eyalet Adı</h3>
+            <div class="stat">🏳️ Ülke: <span id="panel-owner">-</span></div>
+            <hr>
+            
+            <div id="select-country-action" style="display: none;">
+                <button class="btn btn-sec" onclick="window.secilenUlkeyiYonet()">👑 BU ÜLKEYİ YÖNET</button>
+            </div>
+
+            <div id="my-actions" style="display: none;">
+                <div class="stat">🛡️ Ordu (Tümen): <span id="panel-ordu" style="font-weight:bold; color:#66bb6a;">0</span></div>
+                <div class="stat">🏭 Sivil Fabrika: <span id="panel-sivil">0</span></div>
+                <div class="stat">⚔️ Askeri Fabrika: <span id="panel-askeri">0</span></div>
+                <hr>
+                <button class="btn" onclick="window.eyaletIslem('ordu')">🎖️ Asker Üret (100 Altın)</button>
+                <button class="btn" onclick="window.eyaletIslem('sivil')">🏭 Fabrika Kur (300 Altın)</button>
+            </div>
+
+            <div id="enemy-actions" style="display: none;">
+                <div class="stat">🛡️ Düşman Ordusu: <span id="panel-ordu-enemy" style="color:#e74c3c; font-weight:bold;">0</span></div>
+                <hr>
+                <button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ SAVAŞ AÇ / SALDIR!</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="engine.js"></script>
+</body>
+</html>
