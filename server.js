@@ -10,7 +10,6 @@ function oyunVerisiniYukle() {
     if (fs.existsSync(SAVE_FILE)) {
         return JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8'));
     }
-    // haritaKuruldu bayrağı eklendi
     return { gun: 1, eyaletler: {}, oyuncular: {}, haritaKuruldu: false };
 }
 
@@ -50,14 +49,23 @@ const techAgaci = {
 io.on('connection', (socket) => {
     socket.emit('init', gameState);
 
-    // YENİ: Oyun ilk açıldığında istemciden tüm harita verisini alır ve herkese rastgele asker dağıtır
+    // TEST/HİLE KOMUTU (Konsola socket.emit('hilesiz_altin_al') yazarak çalışır)
+    socket.on('hilesiz_altin_al', () => {
+        const oyuncu = gameState.oyuncular[socket.id];
+        if (oyuncu) {
+            oyuncu.para += 50000;
+            io.emit('stateGuncelle', gameState);
+        }
+    });
+
+    // HARİTA KURULUMU (Rastgele asker ataması - oyun başı 1 kere çalışır)
     socket.on('haritaBilgisiGonder', (eyaletListesi) => {
         if (!gameState.haritaKuruldu) {
             console.log("Harita ilk defa kuruluyor, tüm eyaletlere rastgele askerler dağıtılıyor...");
             eyaletListesi.forEach(e => {
                 gameState.eyaletler[e.id] = {
                     sahibi: e.sahibi || "Nötr",
-                    ordu: Math.floor(Math.random() * 6) + 1, // 1 ile 6 arası rastgele başlangıç askeri
+                    ordu: Math.floor(Math.random() * 6) + 1,
                     sivil: 0,
                     askeri: 0
                 };
@@ -123,6 +131,7 @@ io.on('connection', (socket) => {
         io.emit('stateGuncelle', gameState);
     });
 
+    // YENİ SALDIRI VE ORAN MANTIĞI
     socket.on('saldiri', (data) => {
         const oyuncu = gameState.oyuncular[socket.id];
         if (!oyuncu) return;
@@ -130,6 +139,12 @@ io.on('connection', (socket) => {
         const savunanId = data.id;
         const savunanEyalet = gameState.eyaletler[savunanId];
         if (!savunanEyalet || savunanEyalet.sahibi === oyuncu.ulke) return;
+
+        // DENİZ AŞIRI SALDIRI KONTROLÜ
+        if (!data.komsuMu && !oyuncu.teknolojiler?.gemi_gucu) {
+            socket.emit('hataMesaji', '🚫 Deniz aşırı saldırı için "⚓ Deniz Hakimiyeti (Donanma)" teknolojisi gerekiyor!');
+            return;
+        }
 
         let saldiranId = null;
         let maxOrdu = -1;
@@ -148,6 +163,7 @@ io.on('connection', (socket) => {
 
         const saldiranEyalet = gameState.eyaletler[saldiranId];
 
+        // Bonus Hesaplamaları
         let saldiranBonus = 1.0;
         if (oyuncu.teknolojiler?.piyade) saldiranBonus += 0.3;
         if (oyuncu.teknolojiler?.tank) saldiranBonus += 0.6;
@@ -169,18 +185,37 @@ io.on('connection', (socket) => {
             if (sOyuncu.teknolojiler?.hava_kuvvetleri) savunanBonus += 0.2;
         }
 
-        let saldiranGucu = saldiranEyalet.ordu * (Math.random() * 0.4 + 0.8) * saldiranBonus;
-        let savunanGucu = savunanEyalet.ordu * (Math.random() * 0.4 + 0.9) * savunanBonus;
+        // Efektif Güçler ve Oran
+        let efektifSaldiran = saldiranEyalet.ordu * saldiranBonus;
+        let efektifSavunan = savunanEyalet.ordu * savunanBonus;
+        let farkOrani = efektifSaldiran / (efektifSavunan || 1); // 0'a bölme hatasını engelle
 
-        if (saldiranGucu > savunanGucu) {
+        let kazanmaSansi = 0;
+        if (farkOrani >= 2.0) kazanmaSansi = 1.0;         // %100 Kazanır
+        else if (farkOrani >= 1.5) kazanmaSansi = 0.5;    // %50 Kazanır
+        else if (farkOrani >= 1.0) kazanmaSansi = 0.05;   // %5 Kazanır
+        else kazanmaSansi = -1;                           // Güç azsa direkt kaybeder ve eyaletini verir
+
+        let zar = Math.random();
+
+        if (kazanmaSansi !== -1 && zar <= kazanmaSansi) {
+            // ZAFER
             savunanEyalet.sahibi = oyuncu.ulke;
-            savunanEyalet.ordu = Math.max(1, Math.floor(saldiranEyalet.ordu * 0.4));
-            saldiranEyalet.ordu = Math.max(1, Math.floor(saldiranEyalet.ordu * 0.3));
+            savunanEyalet.ordu = Math.max(1, Math.floor(saldiranEyalet.ordu * 0.2)); // Giren ordunun kalanı
+            saldiranEyalet.ordu = Math.max(1, Math.floor(saldiranEyalet.ordu * 0.8)); // Arkada bırakılan
             socket.emit('savasSonucu', { kazanan: true, mesaj: `Zafer! ${data.isim} ele geçirildi!` });
         } else {
-            saldiranEyalet.ordu = Math.max(1, Math.floor(saldiranEyalet.ordu * 0.2));
-            savunanEyalet.ordu = Math.max(1, Math.floor(savunanEyalet.ordu * 0.6));
-            socket.emit('savasSonucu', { kazanan: false, mesaj: `Yenilgi! ${data.isim} saldırısı başarısız oldu.` });
+            // YENİLGİ VEYA FELAKET
+            if (kazanmaSansi === -1) {
+                // Güç düşükken saldırdı, eyaleti kaybetti
+                saldiranEyalet.sahibi = savunanEyalet.sahibi;
+                saldiranEyalet.ordu = Math.max(1, Math.floor(savunanEyalet.ordu * 0.2)); 
+                socket.emit('savasSonucu', { kazanan: false, mesaj: `FELAKET! Düşmandan zayıftın. Saldırın başarısız oldu ve sınır eyaletini kaybettin!` });
+            } else {
+                // Sadece püskürtüldü
+                saldiranEyalet.ordu = Math.max(1, Math.floor(saldiranEyalet.ordu * 0.5));
+                socket.emit('savasSonucu', { kazanan: false, mesaj: `Yenilgi! ${data.isim} saldırısı püskürtüldü.` });
+            }
         }
         io.emit('stateGuncelle', gameState);
     });

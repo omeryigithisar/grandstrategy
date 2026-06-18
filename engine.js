@@ -118,8 +118,6 @@ async function haritayiYukleVeKur() {
                 mapContainer.position.set(0, 0);
                 teknolojiArayuzunuGelistir();
 
-                // YENİ: Harita yüklenmesi bitince sunucuya tüm eyalet ID'lerini bildir.
-                // Sunucu eğer veritabanı boşsa (oyun yeni başlıyorsa) bunlara random asker basacak.
                 let eyaletListesi = [];
                 for (let [id, eyalet] of eyaletlerMap) {
                     eyaletListesi.push({ id: id, sahibi: eyalet.sahibi });
@@ -147,7 +145,7 @@ function teknolojiArayuzunuGelistir() {
         { id: 'fuze', name: '🚀 Balistik Füze Teknolojisi', desc: 'Ağır füze sanayisini başlatır. (ICBM için ön şart)', cost: 600, req: 'taktik', color: '#e74c3c' },
         { id: 'icbm', name: '☢️ ICBM Kıtalararası Füze', desc: 'Sınır bağımsız eyaletlerin ordusunu %90 yok eder.', cost: 1200, req: 'fuze', color: '#c0392b' },
         { id: 'uzay_savunma', name: '🛰️ Lazerli Uzay Savunma Ağı', desc: 'Düşman ICBM nükleer füzelerini havada imha eder! (Anti-Nuke)', cost: 1800, req: 'icbm', color: '#ff0055' },
-        { id: 'gemi_gucu', name: '⚓ Deniz Hakimiyeti (Donanma)', desc: 'Tüm savaşlara %25 deniz ateş desteği sağlar.', cost: 300, req: null, color: '#1abc9c' },
+        { id: 'gemi_gucu', name: '⚓ Deniz Hakimiyeti (Donanma)', desc: 'Deniz aşırı saldırılara izin verir ve savaşlara %25 güç sağlar.', cost: 300, req: null, color: '#1abc9c' },
         { id: 'denizalti', name: '🦈 Nükleer Denizaltılar', desc: 'Donanma gücünü katlar, ekstra %30 saldırı gücü sağlar.', cost: 600, req: 'gemi_gucu', color: '#16a085' },
         { id: 'endustri', name: '⚙️ Endüstriyel Altyapı', desc: 'Sivil fabrikaların günlük gelirini 2 altından 5 altına yükseltir.', cost: 500, req: null, color: '#f1c40f' },
         { id: 'maliyet_dusurme', name: '💰 Seri Üretim Hattı', desc: 'Asker üretim maliyetini 100 altından 65 altına düşürür.', cost: 600, req: 'endustri', color: '#2ecc71' },
@@ -253,10 +251,13 @@ function eyaletSec(id, graphicsObj) {
         const saldiriAlani = document.getElementById('saldiri-alani');
         let htmlIcerik = "";
 
+        // DENİZ VE KARA SALDIRISI ARAYÜZÜ KONTROLÜ
         if (window.sinirKomsusuMu(id)) {
-            htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ SAVAŞ AÇ / SALDIR!</button>`;
+            htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ Kara Saldırısı</button>`;
+        } else if (window.teknolojilerim.gemi_gucu) {
+            htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">⚓ Denizden Saldır!</button>`;
         } else {
-            htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px;">❌ Sınır Komşusu Değil.</div>`;
+            htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:13px; margin-bottom:10px;">🚫 Deniz aşırı saldırı için "Donanma" gereklidir!</div>`;
         }
 
         if (window.teknolojilerim.icbm) {
@@ -283,7 +284,9 @@ window.eyaletIslem = function(tur) {
 window.eyaleteSaldir = function() {
     if (!seciliEyaletId) return;
     const sabitVeri = eyaletlerMap.get(seciliEyaletId);
-    socket.emit('saldiri', { id: seciliEyaletId, isim: sabitVeri.isim, eskiSahibi: sabitVeri.sahibi });
+    // YENİ: Sunucuya komşu olup olmadığını bildiriyoruz, böylece deniz/kara saldırısı ayrımı yapabilir
+    const komsuMu = window.sinirKomsusuMu(seciliEyaletId);
+    socket.emit('saldiri', { id: seciliEyaletId, isim: sabitVeri.isim, eskiSahibi: sabitVeri.sahibi, komsuMu: komsuMu });
 };
 
 window.teknolojiPaneliniAc = function() {
@@ -407,11 +410,15 @@ socket.on('stateGuncelle', (serverState) => {
             const saldiriAlani = document.getElementById('saldiri-alani');
             if(saldiriAlani) {
                 let htmlIcerik = "";
+
                 if (window.sinirKomsusuMu(seciliEyaletId)) {
-                    htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ SAVAŞ AÇ / SALDIR!</button>`;
+                    htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ Kara Saldırısı</button>`;
+                } else if (window.teknolojilerim.gemi_gucu) {
+                    htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">⚓ Denizden Saldır!</button>`;
                 } else {
-                    htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px;">❌ Sınır Komşusu Değil.</div>`;
+                    htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:13px; margin-bottom:10px;">🚫 Deniz aşırı saldırı için "Donanma" gereklidir!</div>`;
                 }
+
                 if (window.teknolojilerim.icbm) {
                     htmlIcerik += `<button class="btn" style="background:#d35400; border-color:#e67e22; margin-top:8px;" onclick="window.icbmFirlat()">☢️ ICBM FIRLAT (500 💰)</button>`;
                 }
