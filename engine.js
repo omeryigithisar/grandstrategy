@@ -4,16 +4,13 @@ window.gosterBildirim = function(mesaj, tur) {
     const container = document.getElementById('notification-container');
     const bildirim = document.createElement('div');
     bildirim.className = 'toast';
-    
-    bildirim.style.backgroundColor = (tur === 'zafer') ? "#27ae60" : "#c0392b";
+    bildirim.style.backgroundColor = (tur === 'zafer') ? "#27ae60" : (tur === 'nuke' ? "#8e44ad" : "#c0392b");
     bildirim.innerText = mesaj;
-
     container.appendChild(bildirim);
-
     setTimeout(() => {
         bildirim.style.opacity = "0";
         setTimeout(() => bildirim.remove(), 500);
-    }, 1500);
+    }, 2500); // Bildirim süresi biraz uzatıldı
 };
 
 const app = new PIXI.Application({
@@ -30,7 +27,9 @@ let eyaletlerMap = new Map();
 let seciliEyaletId = null;
 let sunucuEyaletVerileri = {};
 window.benimUlkem = null; 
-window.teknolojilerim = { piyade: false, taktik: false, fuze: false, icbm: false }; // Teknoloji hafızası
+
+// Yeni teknolojilerle genişletilmiş hafıza
+window.teknolojilerim = {};
 
 const ulkeRenkleri = {
     "Turkey": 0xcc2929, "Republic of Türkiye": 0xcc2929,
@@ -58,21 +57,17 @@ function koordinatDonustur(lon, lat) {
 
 function poligonCizVeSinirBul(graphics, coords, sinirlar) { 
     if (!coords || coords.length === 0) return;
-    
     graphics.beginFill(0xFFFFFF); 
     graphics.lineStyle(0.3, 0x000000, 0.5); 
-    
     let first = true;
     for (let i = 0; i < coords.length; i++) {
         const c = coords[i];
         if (!c || c.length < 2) continue;
         const [x, y] = koordinatDonustur(c[0], c[1]);
-        
         if (x < sinirlar.minX) sinirlar.minX = x;
         if (x > sinirlar.maxX) sinirlar.maxX = x;
         if (y < sinirlar.minY) sinirlar.minY = y;
         if (y > sinirlar.maxY) sinirlar.maxY = y;
-
         if (first) { graphics.moveTo(x, y); first = false; }
         else { graphics.lineTo(x, y); }
     }
@@ -99,7 +94,6 @@ async function haritayiYukleVeKur() {
 
                 let sinirlar = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
                 const g = new PIXI.Graphics();
-                
                 g.tint = eyaletRengi;
 
                 if (feature.geometry.type === "Polygon") {
@@ -113,13 +107,8 @@ async function haritayiYukleVeKur() {
                 g.on('pointerdown', (e) => { e.stopPropagation(); eyaletSec(id, g); });
 
                 eyaletlerMap.set(id, { 
-                    isim: isim, 
-                    sahibi: ulkeSahibi, 
-                    varsayilanRenk: eyaletRengi, 
-                    graphicsRef: g,
-                    sinirlar: sinirlar
+                    isim: isim, sahibi: ulkeSahibi, varsayilanRenk: eyaletRengi, graphicsRef: g, sinirlar: sinirlar
                 });
-                
                 mapContainer.addChild(g);
             }
 
@@ -129,19 +118,84 @@ async function haritayiYukleVeKur() {
                 kameraSisteminiKur();
                 mapContainer.scale.set(1);
                 mapContainer.position.set(0, 0);
+                teknolojiArayuzunuGelistir();
             }
         }
         yukle();
     } catch (e) { console.error(e); }
 }
 
+// AŞIRI GELİŞMİŞ DİNAMİK TEKNOLOJİ AĞACI RENDER
+function teknolojiArayuzunuGelistir() {
+    const techModal = document.getElementById('tech-modal');
+    if (!techModal) return;
+    const flexContainer = techModal.querySelector('div');
+    if (!flexContainer) return;
+
+    const tumAğacTeknolojileri = [
+        { id: 'piyade', name: '⚔️ Piyade Ekipmanları', desc: 'Saldırı gücünü %30 arttırır.', cost: 200, req: null, color: '#00ffff' },
+        { id: 'tank', name: '🚜 Zırhlı Birlikler (Tank)', desc: 'Ordunuza tanklar ekler, saldırı gücünü %60 arttırır.', cost: 450, req: 'piyade', color: '#3498db' },
+        
+        { id: 'hava_kuvvetleri', name: '✈️ Hava Kuvvetleri', desc: 'Hava üstünlüğü kurar, Saldırıya %40, Savunmaya %20 bonus sağlar.', cost: 550, req: 'piyade', color: '#9b59b6' },
+        { id: 'hayalet_ucak', name: '🛸 Hayalet Uçak Filosu', desc: 'Radara yakalanmayan uçaklar, devasa %50 Saldırı bonusu verir.', cost: 900, req: 'hava_kuvvetleri', color: '#8e44ad' },
+
+        { id: 'taktik', name: '🧠 Askeri Doktrin & Taktik', desc: 'Savunma gücünü %40 arttırır.', cost: 400, req: null, color: '#f39c12' },
+        { id: 'tahkimat', name: '🛡️ Bölgesel Tahkimat Sınırları', desc: 'Savunma gücüne ekstra %20 bonus sağlar.', cost: 350, req: 'taktik', color: '#e67e22' },
+        
+        { id: 'fuze', name: '🚀 Balistik Füze Teknolojisi', desc: 'Ağır füze sanayisini başlatır. (ICBM için ön şart)', cost: 600, req: 'taktik', color: '#e74c3c' },
+        { id: 'icbm', name: '☢️ ICBM Kıtalararası Füze', desc: 'Sınır bağımsız eyaletlerin ordusunu %90 yok eder.', cost: 1200, req: 'fuze', color: '#c0392b' },
+        { id: 'uzay_savunma', name: '🛰️ Lazerli Uzay Savunma Ağı', desc: 'Düşman ICBM nükleer füzelerini havada imha eder! (Anti-Nuke)', cost: 1800, req: 'icbm', color: '#ff0055' },
+
+        { id: 'gemi_gucu', name: '⚓ Deniz Hakimiyeti (Donanma)', desc: 'Tüm savaşlara %25 deniz ateş desteği sağlar.', cost: 300, req: null, color: '#1abc9c' },
+        { id: 'denizalti', name: '🦈 Nükleer Denizaltılar', desc: 'Donanma gücünü katlar, ekstra %30 saldırı gücü sağlar.', cost: 600, req: 'gemi_gucu', color: '#16a085' },
+
+        { id: 'endustri', name: '⚙️ Endüstriyel Altyapı', desc: 'Sivil fabrikaların günlük gelirini 2 altından 5 altına yükseltir.', cost: 500, req: null, color: '#f1c40f' },
+        { id: 'maliyet_dusurme', name: '💰 Seri Üretim Hattı', desc: 'Asker üretim maliyetini 100 altından 65 altına düşürür.', cost: 600, req: 'endustri', color: '#2ecc71' },
+        { id: 'mega_fabrikalar', name: '🏭 Mega Endüstriyel Kompleks', desc: 'Sivil fabrika gelirini 5 altından 10 altına çıkarır.', cost: 1000, req: 'maliyet_dusurme', color: '#27ae60' },
+
+        { id: 'istihbarat', name: '🕵️ Gizli Servis & İstihbarat', desc: 'Düşman zafiyetlerini bulur. Hem saldırıya hem savunmaya %15 bonus.', cost: 450, req: null, color: '#34495e' }
+    ];
+
+    let htmlIcerik = "";
+    tumAğacTeknolojileri.forEach(tech => {
+        const arastirildiMi = window.teknolojilerim[tech.id];
+        const kilitliMi = tech.req ? !window.teknolojilerim[tech.req] : false;
+        
+        let butonMetni = `${tech.cost} 💰 Araştır`;
+        let butonStili = "width: 140px; margin: 0;";
+        let disabledAttr = "";
+
+        if (arastirildiMi) {
+            butonMetni = "✓ Araştırıldı";
+            butonStili += " background: #27ae60 !important; color: white; cursor: not-allowed;";
+            disabledAttr = "disabled";
+        } else if (kilitliMi) {
+            butonMetni = `🔒 Kilitli`;
+            butonStili += " background: #7f8c8d !important; opacity: 0.6; cursor: not-allowed;";
+            disabledAttr = "disabled";
+        }
+
+        const reqGosterge = tech.req ? `<br><span style="font-size: 11px; color: #e74c3c;">⚠️ Önşart: ${tech.req.toUpperCase()}</span>` : '';
+
+        htmlIcerik += `
+            <div style="background: rgba(15, 35, 40, 0.85); padding: 14px; margin-bottom: 8px; border: 1px solid #004d40; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="max-width: 65%;">
+                    <strong style="color: ${tech.color}; font-size: 15px;">${tech.name}</strong>${reqGosterge}
+                    <div style="font-size: 12px; color: #bdc3c7; margin-top: 4px;">${tech.desc}</div>
+                </div>
+                <button id="tech-${tech.id}" class="btn" style="${butonStili}" ${disabledAttr} onclick="window.teknolojiArastir('${tech.id}')">${butonMetni}</button>
+            </div>
+        `;
+    });
+
+    flexContainer.innerHTML = htmlIcerik;
+}
+
 window.sinirKomsusuMu = function(hedefId) {
     const hedefEyalet = eyaletlerMap.get(hedefId);
     if (!hedefEyalet || !hedefEyalet.sinirlar) return true; 
-
     const h = hedefEyalet.sinirlar;
     const padding = 20; 
-
     for (let [id, eyalet] of eyaletlerMap) {
         if (eyalet.sahibi === window.benimUlkem && eyalet.sinirlar) {
             const e = eyalet.sinirlar;
@@ -233,9 +287,9 @@ window.eyaleteSaldir = function() {
     socket.emit('saldiri', { id: seciliEyaletId, isim: sabitVeri.isim, eskiSahibi: sabitVeri.sahibi });
 };
 
-// TEKNOLOJİ FONKSİYONLARI
 window.teknolojiPaneliniAc = function() {
     document.getElementById('tech-modal').style.display = "block";
+    teknolojiArayuzunuGelistir(); 
 };
 
 window.teknolojiArastir = function(techId) {
@@ -245,7 +299,7 @@ window.teknolojiArastir = function(techId) {
 window.icbmFirlat = function() {
     if (!seciliEyaletId) return;
     const sabitVeri = eyaletlerMap.get(seciliEyaletId);
-    if(confirm(`${sabitVeri.isim} eyaletine ATOM füzeleri fırlatılsın mı? (500 Altın)`)) {
+    if(confirm(`${sabitVeri.isim} eyaletine NÜKLEER FÜZE fırlatılsın mı? (500 Altın)`)) {
         socket.emit('icbmFirlat', { id: seciliEyaletId, isim: sabitVeri.isim, eskiSahibi: sabitVeri.sahibi });
     }
 };
@@ -262,13 +316,10 @@ function kameraSisteminiKur() {
         const mouseY = e.offsetY;
         const localX = (mouseX - mapContainer.x) / mapContainer.scale.x;
         const localY = (mouseY - mapContainer.y) / mapContainer.scale.y;
-
         const zoomHizi = 0.05;
         let yeniScale = e.deltaY < 0 ? mapContainer.scale.x * (1 + zoomHizi) : mapContainer.scale.x * (1 - zoomHizi);
-
         if (yeniScale < 0.3) yeniScale = 0.3;
         if (yeniScale > 15) yeniScale = 15;
-
         mapContainer.scale.set(yeniScale);
         mapContainer.x = mouseX - localX * yeniScale;
         mapContainer.y = mouseY - localY * yeniScale;
@@ -313,14 +364,9 @@ socket.on('stateGuncelle', (serverState) => {
         
         if (aktifOyuncu.teknolojiler) {
             window.teknolojilerim = aktifOyuncu.teknolojiler;
-            Object.keys(window.teknolojilerim).forEach(techId => {
-                const btn = document.getElementById(`tech-${techId}`);
-                if (btn && window.teknolojilerim[techId]) {
-                    btn.innerText = "✓ Araştırıldı";
-                    btn.style.background = "#7f8c8d";
-                    btn.disabled = true;
-                }
-            });
+            if(document.getElementById('tech-modal').style.display === "block") {
+                teknolojiArayuzunuGelistir();
+            }
         }
     }
 
@@ -328,7 +374,6 @@ socket.on('stateGuncelle', (serverState) => {
         if (sunucuEyaletVerileri[id]) {
             let yeniSahibi = sunucuEyaletVerileri[id].sahibi;
             eyalet.sahibi = yeniSahibi;
-
             if (eyalet.graphicsRef && id !== seciliEyaletId) {
                 if (window.benimUlkem && yeniSahibi === window.benimUlkem) {
                     eyalet.graphicsRef.tint = ulkeRenkleri[window.benimUlkem] || 0xcc2929;
@@ -344,14 +389,12 @@ socket.on('stateGuncelle', (serverState) => {
         if (sunucuEyaletVerileri[seciliEyaletId]) {
             sabitVeri.sahibi = sunucuEyaletVerileri[seciliEyaletId].sahibi;
         }
-
         document.getElementById('panel-owner').innerText = sabitVeri.sahibi;
 
         if (sabitVeri.sahibi === window.benimUlkem) {
             document.getElementById('select-country-action').style.display = "none";
             document.getElementById('my-actions').style.display = "block";
             document.getElementById('enemy-actions').style.display = "none";
-            
             const v = sunucuEyaletVerileri[seciliEyaletId];
             document.getElementById('panel-sivil').innerText = v.sivil || 0;
             document.getElementById('panel-askeri').innerText = v.askeri || 0;
@@ -370,7 +413,6 @@ socket.on('stateGuncelle', (serverState) => {
                 } else {
                     htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px;">❌ Sınır Komşusu Değil.</div>`;
                 }
-
                 if (window.teknolojilerim.icbm) {
                     htmlIcerik += `<button class="btn" style="background:#d35400; border-color:#e67e22; margin-top:8px;" onclick="window.icbmFirlat()">☢️ ICBM FIRLAT (500 💰)</button>`;
                 }
@@ -387,14 +429,12 @@ socket.on('savasSonucu', (data) => {
 
 haritayiYukleVeKur();
 
-// İLHAK (ANNEXATION) DİNLEYİCİSİ - DÜZELTİLDİ
+// ESKİ ICBM BUG'UNA NEDEN OLAN EVENT SİLİNDİ, YERİNE SADECE BİLDİRİM GÖSTEREN GÜVENLİ BİR YAPI GELDİ
+socket.on('nukleerBildirim', (data) => {
+    window.gosterBildirim(data.mesaj, 'nuke');
+});
+
+// Eski 'ulkeIlhakEdildi' eventi de normal savaş zaferi bildirimi olarak kullanılıyorsa güvenli hale getirildi
 socket.on('ulkeIlhakEdildi', (data) => {
-    // Sadece bildirim göster, haritayı zorla boyama
-    // Çünkü eyalet değişimini zaten 'stateGuncelle' fonksiyonu otomatik yapıyor!
     window.gosterBildirim(data.mesaj, 'zafer');
-    
-    // Eğer seciliEyaletId o ilhak edilen ülkedeyse paneli güncelle
-    if (seciliEyaletId) {
-        eyaletSec(seciliEyaletId, eyaletlerMap.get(seciliEyaletId).graphicsRef);
-    }
 });
