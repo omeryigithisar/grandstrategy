@@ -23,11 +23,13 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, { cors: { origin: "*" } });
 
-let gameState = {
-    gun: 1,
-    eyaletler: {}, 
-    oyuncular: {} 
-};
+if (!gameState || !gameState.gun) {
+    gameState = {
+        gun: 1,
+        eyaletler: {},
+        oyuncular: {}
+    };
+}
 // OYUNUN BAŞKENTLERİ (Haritadaki 'name' verisiyle aynı olmalı)
 const baskentler = {
     "Turkey": "Ankara",
