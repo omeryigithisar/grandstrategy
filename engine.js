@@ -30,6 +30,7 @@ let eyaletlerMap = new Map();
 let seciliEyaletId = null;
 let sunucuEyaletVerileri = {};
 window.benimUlkem = null; 
+window.teknolojilerim = { piyade: false, taktik: false, fuze: false, icbm: false }; // Teknoloji hafızası
 
 const ulkeRenkleri = {
     "Turkey": 0xcc2929, "Republic of Türkiye": 0xcc2929,
@@ -144,14 +145,10 @@ window.sinirKomsusuMu = function(hedefId) {
     for (let [id, eyalet] of eyaletlerMap) {
         if (eyalet.sahibi === window.benimUlkem && eyalet.sinirlar) {
             const e = eyalet.sinirlar;
-            
             const kesisiyorMu = !(
-                h.maxX < e.minX - padding || 
-                h.minX > e.maxX + padding || 
-                h.maxY < e.minY - padding || 
-                h.minY > e.maxY + padding
+                h.maxX < e.minX - padding || h.minX > e.maxX + padding || 
+                h.maxY < e.minY - padding || h.minY > e.maxY + padding
             );
-            
             if (kesisiyorMu) return true;
         }
     }
@@ -198,22 +195,22 @@ function eyaletSec(id, graphicsObj) {
         document.getElementById('select-country-action').style.display = "none";
         document.getElementById('my-actions').style.display = "none";
         document.getElementById('enemy-actions').style.display = "block";
+        document.getElementById('panel-ordu-enemy').innerText = sunucuVerisi.ordu || 1;
         
-        const saldiriAlani = document.getElementById('enemy-actions');
-        
+        const saldiriAlani = document.getElementById('saldiri-alani');
+        let htmlIcerik = "";
+
         if (window.sinirKomsusuMu(id)) {
-            saldiriAlani.innerHTML = `
-                <div class="stat">🛡️ Düşman Ordusu: <span id="panel-ordu-enemy" style="color:#e74c3c; font-weight:bold;">${sunucuVerisi.ordu}</span></div>
-                <hr>
-                <button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ SAVAŞ AÇ / SALDIR!</button>
-            `;
+            htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ SAVAŞ AÇ / SALDIR!</button>`;
         } else {
-            saldiriAlani.innerHTML = `
-                <div class="stat">🛡️ Düşman Ordusu: <span id="panel-ordu-enemy" style="color:#e74c3c; font-weight:bold;">${sunucuVerisi.ordu}</span></div>
-                <hr>
-                <div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px;">❌ Sınır Komşusu Değil.<br>Saldırı Yapılamaz.</div>
-            `;
+            htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px;">❌ Sınır Komşusu Değil.</div>`;
         }
+
+        if (window.teknolojilerim.icbm) {
+            htmlIcerik += `<button class="btn" style="background:#d35400; border-color:#e67e22; margin-top:8px;" onclick="window.icbmFirlat()">☢️ ICBM FIRLAT (500 💰)</button>`;
+        }
+
+        saldiriAlani.innerHTML = htmlIcerik;
     }
     document.getElementById('detail-panel').style.display = "block";
 }
@@ -234,6 +231,23 @@ window.eyaleteSaldir = function() {
     if (!seciliEyaletId) return;
     const sabitVeri = eyaletlerMap.get(seciliEyaletId);
     socket.emit('saldiri', { id: seciliEyaletId, isim: sabitVeri.isim, eskiSahibi: sabitVeri.sahibi });
+};
+
+// TEKNOLOJİ FONKSİYONLARI
+window.teknolojiPaneliniAc = function() {
+    document.getElementById('tech-modal').style.display = "block";
+};
+
+window.teknolojiArastir = function(techId) {
+    socket.emit('teknolojiArastir', techId);
+};
+
+window.icbmFirlat = function() {
+    if (!seciliEyaletId) return;
+    const sabitVeri = eyaletlerMap.get(seciliEyaletId);
+    if(confirm(`${sabitVeri.isim} eyaletine ATOM füzeleri fırlatılsın mı? (500 Altın)`)) {
+        socket.emit('icbmFirlat', { id: seciliEyaletId, isim: sabitVeri.isim, eskiSahibi: sabitVeri.sahibi });
+    }
 };
 
 function kameraSisteminiKur() {
@@ -293,21 +307,33 @@ socket.on('stateGuncelle', (serverState) => {
     document.getElementById('day-counter').innerText = serverState.gun;
     sunucuEyaletVerileri = serverState.eyaletler;
 
-    const oyuncum = serverState.oyuncular[socket.id];
-    if(oyuncum) document.getElementById('my-gold').innerText = oyuncum.para;
+    const aktifOyuncu = serverState.oyuncular[socket.id];
+    if (aktifOyuncu) {
+        document.getElementById('my-gold').innerText = aktifOyuncu.para;
+        
+        if (aktifOyuncu.teknolojiler) {
+            window.teknolojilerim = aktifOyuncu.teknolojiler;
+            Object.keys(window.teknolojilerim).forEach(techId => {
+                const btn = document.getElementById(`tech-${techId}`);
+                if (btn && window.teknolojilerim[techId]) {
+                    btn.innerText = "✓ Araştırıldı";
+                    btn.style.background = "#7f8c8d";
+                    btn.disabled = true;
+                }
+            });
+        }
+    }
 
     for (let [id, eyalet] of eyaletlerMap) {
         if (sunucuEyaletVerileri[id]) {
             let yeniSahibi = sunucuEyaletVerileri[id].sahibi;
             eyalet.sahibi = yeniSahibi;
 
-            if (eyalet.graphicsRef) {
-                if (id !== seciliEyaletId) {
-                    if (window.benimUlkem && yeniSahibi === window.benimUlkem) {
-                        eyalet.graphicsRef.tint = ulkeRenkleri[window.benimUlkem] || 0xcc2929;
-                    } else {
-                        eyalet.graphicsRef.tint = rastgeleSabitRenk(yeniSahibi);
-                    }
+            if (eyalet.graphicsRef && id !== seciliEyaletId) {
+                if (window.benimUlkem && yeniSahibi === window.benimUlkem) {
+                    eyalet.graphicsRef.tint = ulkeRenkleri[window.benimUlkem] || 0xcc2929;
+                } else {
+                    eyalet.graphicsRef.tint = rastgeleSabitRenk(yeniSahibi);
                 }
             }
         }
@@ -315,7 +341,6 @@ socket.on('stateGuncelle', (serverState) => {
 
     if (window.benimUlkem && seciliEyaletId && eyaletlerMap.has(seciliEyaletId)) {
         const sabitVeri = eyaletlerMap.get(seciliEyaletId);
-        
         if (sunucuEyaletVerileri[seciliEyaletId]) {
             sabitVeri.sahibi = sunucuEyaletVerileri[seciliEyaletId].sahibi;
         }
@@ -336,6 +361,21 @@ socket.on('stateGuncelle', (serverState) => {
             document.getElementById('my-actions').style.display = "none";
             document.getElementById('enemy-actions').style.display = "block";
             document.getElementById('panel-ordu-enemy').innerText = sunucuEyaletVerileri[seciliEyaletId].ordu || 1;
+            
+            const saldiriAlani = document.getElementById('saldiri-alani');
+            if(saldiriAlani) {
+                let htmlIcerik = "";
+                if (window.sinirKomsusuMu(seciliEyaletId)) {
+                    htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ SAVAŞ AÇ / SALDIR!</button>`;
+                } else {
+                    htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px;">❌ Sınır Komşusu Değil.</div>`;
+                }
+
+                if (window.teknolojilerim.icbm) {
+                    htmlIcerik += `<button class="btn" style="background:#d35400; border-color:#e67e22; margin-top:8px;" onclick="window.icbmFirlat()">☢️ ICBM FIRLAT (500 💰)</button>`;
+                }
+                saldiriAlani.innerHTML = htmlIcerik;
+            }
         }
     }
 });

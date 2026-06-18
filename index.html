@@ -35,7 +35,7 @@
             <div>👑 Ülkem: <span id="my-country" style="color:#f1c40f; font-weight:bold;">İzleyici (Ülke Seçin)</span></div>
             <div>💰 Hazine: <span id="my-gold" style="color:#f1c40f; font-weight:bold;">0</span></div>
             <div>📅 Gün: <span id="day-counter" style="color:#4db6ac;">1</span></div>
-            <button class="btn" style="width: auto; padding: 5px 15px;" onclick="alert('Teknoloji Ağacı Çok Yakında!')">🔬 Teknoloji</button>
+            <button class="btn" style="width: auto; padding: 5px 15px;" onclick="window.teknolojiPaneliniAc()">🔬 Teknoloji</button>
         </div>
 
         <div id="detail-panel" class="panel">
@@ -59,10 +59,35 @@
             <div id="enemy-actions" style="display: none;">
                 <div class="stat">🛡️ Düşman Ordusu: <span id="panel-ordu-enemy" style="color:#e74c3c; font-weight:bold;">0</span></div>
                 <hr>
-                <button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ SAVAŞ AÇ / SALDIR!</button>
+                <div id="saldiri-alani"></div>
             </div>
         </div>
     </div>
+
+    <div id="tech-modal" style="display: none; position: fixed; top: 15%; left: 25%; width: 50%; height: 65%; background: rgba(8, 20, 24, 0.98); border: 2px solid #004d40; z-index: 10000; padding: 20px; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.8); pointer-events: auto; overflow-y: auto;">
+        <h2 style="color: #f1c40f; text-align: center; margin-top: 0; border-bottom: 1px solid #004d40; padding-bottom: 10px;">🔬 REICHSTECH - Teknoloji Ağacı</h2>
+        <button class="btn btn-saldiri" style="width: auto; float: right; padding: 5px 15px; margin-top: -45px;" onclick="document.getElementById('tech-modal').style.display='none'">X Kapat</button>
+        
+        <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;">
+            <div style="background: rgba(25, 45, 50, 0.6); padding: 12px; border: 1px solid #34495e; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <div><strong style="color: #66bb6a;">🎖️ Gelişmiş Piyade Tüfeği</strong><br><span style="font-size: 12px; color: #bdc3c7;">Saldırı gücünüze %30 kalıcı bonus ekler.</span></div>
+                <button id="tech-piyade" class="btn btn-sec" style="width: 130px; margin: 0;" onclick="window.teknolojiArastir('piyade')">200 💰 Araştır</button>
+            </div>
+            <div style="background: rgba(25, 45, 50, 0.6); padding: 12px; border: 1px solid #34495e; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <div><strong style="color: #2980b9;">🛡️ Modern Savunma Taktikleri</strong><br><span style="font-size: 12px; color: #bdc3c7;">Topraklarınızı korurken defansınıza %40 bonus ekler.</span></div>
+                <button id="tech-taktik" class="btn btn-sec" style="width: 130px; margin: 0;" onclick="window.teknolojiArastir('taktik')">400 💰 Araştır</button>
+            </div>
+            <div style="background: rgba(25, 45, 50, 0.6); padding: 12px; border: 1px solid #34495e; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <div><strong style="color: #e67e22;">🚀 Füze Teknolojisi</strong><br><span style="font-size: 12px; color: #bdc3c7;">Ağır balistik sanayiyi başlatır. (ICBM için ön şart)</span></div>
+                <button id="tech-fuze" class="btn btn-sec" style="width: 130px; margin: 0;" onclick="window.teknolojiArastir('fuze')">600 💰 Araştır</button>
+            </div>
+            <div style="background: rgba(25, 45, 50, 0.6); padding: 12px; border: 1px solid #34495e; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <div><strong style="color: #e74c3c;">☢️ ICBM Kıtalararası Balistik Füze</strong><br><span style="font-size: 12px; color: #bdc3c7;">Sınır bağımsız herhangi bir eyaletteki ordunun %90'ını siler. (Fırlatma: 500 💰)</span></div>
+                <button id="tech-icbm" class="btn btn-sec" style="width: 130px; margin: 0;" onclick="window.teknolojiArastir('icbm')">1000 💰 Araştır</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="engine.js"></script>
