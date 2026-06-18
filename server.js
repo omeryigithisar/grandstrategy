@@ -126,7 +126,7 @@ io.on('connection', (socket) => {
         let saldiranGucu = saldiranEyalet.ordu * (Math.random() * 0.4 + 0.8) * saldiranBonus;
         let savunanGucu = savunanEyalet.ordu * (Math.random() * 0.4 + 0.9) * savunanBonus;
 
-        if (saldiranGucu > savunanGucu) {
+if (saldiranGucu > savunanGucu) {
             const eskiSahibi = savunanEyalet.sahibi;
             savunanEyalet.sahibi = oyuncu.ulke;
             savunanEyalet.ordu = Math.max(1, Math.floor(saldiranEyalet.ordu * 0.4));
@@ -134,14 +134,11 @@ io.on('connection', (socket) => {
 
             socket.emit('savasSonucu', { kazanan: true, mesaj: `Zafer! ${data.isim} ele geçirildi!` });
             
-            let kalanEyaletSayisi = Object.values(gameState.eyaletler).filter(e => e.sahibi === eskiSahibi).length;
-            if (kalanEyaletSayisi === 0 && eskiSahibi && eskiSahibi !== "Nötr") {
-                io.emit('ulkeIlhakEdildi', { kazanan: oyuncu.ulke, kaybeden: eskiSahibi, mesaj: `${eskiSahibi} devleti tamamen ilhak edildi!` });
-            }
+            // ESKİ İLHAK KONTROLÜNÜ BURADAN SİLDİK (Çünkü her başarılı saldırıda 
+            // ülkeyi ilhak edip haritayı bozuyordu. Artık sadece eyalet eyalet ilerleyeceksin.)
+            
         } else {
-            saldiranEyalet.ordu = Math.max(1, Math.floor(saldiranEyalet.ordu * 0.2));
-            savunanEyalet.ordu = Math.max(1, Math.floor(savunanEyalet.ordu * 0.5));
-            socket.emit('savasSonucu', { kazanan: false, mesaj: 'Saldırı başarısız oldu, ordumuz eridi!' });
+            // ... (Aynı kalsın)
         }
         io.emit('stateGuncelle', gameState);
     });

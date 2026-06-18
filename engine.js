@@ -387,20 +387,14 @@ socket.on('savasSonucu', (data) => {
 
 haritayiYukleVeKur();
 
+// İLHAK (ANNEXATION) DİNLEYİCİSİ - DÜZELTİLDİ
 socket.on('ulkeIlhakEdildi', (data) => {
+    // Sadece bildirim göster, haritayı zorla boyama
+    // Çünkü eyalet değişimini zaten 'stateGuncelle' fonksiyonu otomatik yapıyor!
     window.gosterBildirim(data.mesaj, 'zafer');
     
-    for (let [id, eyalet] of eyaletlerMap) {
-        if (eyalet.sahibi === data.kaybeden) {
-            eyalet.sahibi = data.kazanan;
-            if (eyalet.graphicsRef) {
-                if (window.benimUlkem === data.kazanan) {
-                    eyalet.graphicsRef.tint = ulkeRenkleri[window.benimUlkem] || 0xcc2929;
-                } else {
-                    eyalet.graphicsRef.tint = rastgeleSabitRenk(data.kazanan);
-                }
-            }
-        }
+    // Eğer seciliEyaletId o ilhak edilen ülkedeyse paneli güncelle
+    if (seciliEyaletId) {
+        eyaletSec(seciliEyaletId, eyaletlerMap.get(seciliEyaletId).graphicsRef);
     }
-    if (seciliEyaletId) eyaletSec(seciliEyaletId, eyaletlerMap.get(seciliEyaletId).graphicsRef);
 });
