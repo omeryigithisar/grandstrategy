@@ -10,7 +10,8 @@ function oyunVerisiniYukle() {
     if (fs.existsSync(SAVE_FILE)) {
         return JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8'));
     }
-    return { gun: 1, eyaletler: {}, oyuncular: {} };
+    // haritaKuruldu bayrağı eklendi
+    return { gun: 1, eyaletler: {}, oyuncular: {}, haritaKuruldu: false };
 }
 
 let gameState = oyunVerisiniYukle();
@@ -21,51 +22,50 @@ setInterval(() => {
 }, 10000);
 
 if (!gameState || !gameState.gun) {
-    gameState = { gun: 1, eyaletler: {}, oyuncular: {} };
+    gameState = { gun: 1, eyaletler: {}, oyuncular: {}, haritaKuruldu: false };
 }
 
 const baskentler = {
     "Turkey": "Ankara", "Syria": "Hasaka (Al Haksa)", "Iraq": "Baghdad", "Greece": "Attica", "Iran": "Tehran"
 };
 
-// DEVASA TEKNOLOJİ AĞACI KONFİGÜRASYONU
 const techAgaci = {
-    // Piyade Dalı
     piyade: { maliyet: 200, gereksinim: null },
     tank: { maliyet: 450, gereksinim: 'piyade' },
-    // Hava Kuvvetleri Dalı
     hava_kuvvetleri: { maliyet: 550, gereksinim: 'piyade' },
     hayalet_ucak: { maliyet: 900, gereksinim: 'hava_kuvvetleri' },
-    // Taktik & Savunma Dalı
     taktik: { maliyet: 400, gereksinim: null },
     tahkimat: { maliyet: 350, gereksinim: 'taktik' },
-    // Nükleer Dal
     fuze: { maliyet: 600, gereksinim: 'taktik' },
     icbm: { maliyet: 1200, gereksinim: 'fuze' },
-    uzay_savunma: { maliyet: 1800, gereksinim: 'icbm' }, // Anti-Nuke
-    // Deniz Dalı
+    uzay_savunma: { maliyet: 1800, gereksinim: 'icbm' },
     gemi_gucu: { maliyet: 300, gereksinim: null },
     denizalti: { maliyet: 600, gereksinim: 'gemi_gucu' },
-    // Ekonomi Dalı
     endustri: { maliyet: 500, gereksinim: null },
     maliyet_dusurme: { maliyet: 600, gereksinim: 'endustri' },
     mega_fabrikalar: { maliyet: 1000, gereksinim: 'maliyet_dusurme' },
-    // İstihbarat Dalı
     istihbarat: { maliyet: 450, gereksinim: null }
 };
 
-function eyaletOlusturSifirdan(eyaletId, varsayilanSahibi) {
-    const rastgeleOrdu = Math.floor(Math.random() * 6) + 1;
-    return {
-        sahibi: varsayilanSahibi || "Nötr",
-        ordu: rastgeleOrdu,
-        sivil: 0,
-        askeri: 0
-    };
-}
-
 io.on('connection', (socket) => {
     socket.emit('init', gameState);
+
+    // YENİ: Oyun ilk açıldığında istemciden tüm harita verisini alır ve herkese rastgele asker dağıtır
+    socket.on('haritaBilgisiGonder', (eyaletListesi) => {
+        if (!gameState.haritaKuruldu) {
+            console.log("Harita ilk defa kuruluyor, tüm eyaletlere rastgele askerler dağıtılıyor...");
+            eyaletListesi.forEach(e => {
+                gameState.eyaletler[e.id] = {
+                    sahibi: e.sahibi || "Nötr",
+                    ordu: Math.floor(Math.random() * 6) + 1, // 1 ile 6 arası rastgele başlangıç askeri
+                    sivil: 0,
+                    askeri: 0
+                };
+            });
+            gameState.haritaKuruldu = true;
+            io.emit('stateGuncelle', gameState);
+        }
+    });
 
     socket.on('ulkeSec', (ulkeAdi) => {
         let ulkeDoluMu = Object.values(gameState.oyuncular).some(p => p.ulke === ulkeAdi);
@@ -96,11 +96,8 @@ io.on('connection', (socket) => {
         if (!oyuncu) return;
         const { eyaletId, tur } = data;
         
-        if (!gameState.eyaletler[eyaletId]) {
-            gameState.eyaletler[eyaletId] = eyaletOlusturSifirdan(eyaletId, oyuncu.ulke);
-        }
-
         const eyalet = gameState.eyaletler[eyaletId];
+        if (!eyalet) return;
 
         if (eyalet.sahibi !== oyuncu.ulke) {
             socket.emit('hataMesaji', 'Bu eyalet senin değil!');
@@ -131,13 +128,8 @@ io.on('connection', (socket) => {
         if (!oyuncu) return;
 
         const savunanId = data.id;
-
-        if (!gameState.eyaletler[savunanId]) {
-            gameState.eyaletler[savunanId] = eyaletOlusturSifirdan(savunanId, data.eskiSahibi);
-        }
-
         const savunanEyalet = gameState.eyaletler[savunanId];
-        if (savunanEyalet.sahibi === oyuncu.ulke) return;
+        if (!savunanEyalet || savunanEyalet.sahibi === oyuncu.ulke) return;
 
         let saldiranId = null;
         let maxOrdu = -1;
@@ -156,7 +148,6 @@ io.on('connection', (socket) => {
 
         const saldiranEyalet = gameState.eyaletler[saldiranId];
 
-        // GENİŞLETİLMİŞ SALDIRI ÇARPANLARI
         let saldiranBonus = 1.0;
         if (oyuncu.teknolojiler?.piyade) saldiranBonus += 0.3;
         if (oyuncu.teknolojiler?.tank) saldiranBonus += 0.6;
@@ -166,7 +157,6 @@ io.on('connection', (socket) => {
         if (oyuncu.teknolojiler?.denizalti) saldiranBonus += 0.3;
         if (oyuncu.teknolojiler?.istihbarat) saldiranBonus += 0.15;
 
-        // GENİŞLETİLMİŞ SAVUNMA ÇARPANLARI
         let savunanBonus = 1.0;
         const savunanSahibi = savunanEyalet.sahibi;
         const savunanOyuncuSocket = Object.keys(gameState.oyuncular).find(sId => gameState.oyuncular[sId].ulke === savunanSahibi);
@@ -176,7 +166,6 @@ io.on('connection', (socket) => {
             if (sOyuncu.teknolojiler?.taktik) savunanBonus += 0.4;
             if (sOyuncu.teknolojiler?.tahkimat) savunanBonus += 0.2;
             if (sOyuncu.teknolojiler?.istihbarat) savunanBonus += 0.15;
-            // Hava Kuvvetleri savunmada da biraz işe yarar
             if (sOyuncu.teknolojiler?.hava_kuvvetleri) savunanBonus += 0.2;
         }
 
@@ -227,7 +216,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // BUG FIX: ICBM Sistemi Düzeltildi
     socket.on('icbmFirlat', (data) => {
         const oyuncu = gameState.oyuncular[socket.id];
         if (!oyuncu || !oyuncu.teknolojiler?.icbm) {
@@ -240,19 +228,14 @@ io.on('connection', (socket) => {
         }
 
         const hedefId = data.id;
-        if (!gameState.eyaletler[hedefId]) {
-            gameState.eyaletler[hedefId] = eyaletOlusturSifirdan(hedefId, data.eskiSahibi);
-        }
         const hedefEyalet = gameState.eyaletler[hedefId];
-        if (hedefEyalet.sahibi === oyuncu.ulke) return;
+        if (!hedefEyalet || hedefEyalet.sahibi === oyuncu.ulke) return;
 
-        // Anti-Nuke (Uzay Savunma) Kontrolü
         const savunanOyuncuSocket = Object.keys(gameState.oyuncular).find(sId => gameState.oyuncular[sId].ulke === hedefEyalet.sahibi);
         if (savunanOyuncuSocket) {
             const savunanOyuncu = gameState.oyuncular[savunanOyuncuSocket];
             if (savunanOyuncu.teknolojiler?.uzay_savunma) {
                 oyuncu.para -= 500;
-                // Savunan tarafta Uzay Savunma varsa füze havada patlar, zarar vermez
                 io.emit('savasSonucu', { kazanan: false, mesaj: `🚀❌ NÜKLEER SAVUNMA! ${hedefEyalet.sahibi} 'Uzay Savunma Ağı' ile füzenizi havada imha etti!` });
                 io.emit('stateGuncelle', gameState);
                 return;
@@ -260,10 +243,8 @@ io.on('connection', (socket) => {
         }
 
         oyuncu.para -= 500;
-        // Sadece hedef eyaletin ordusu yok edilir. Sahiplik DEĞİŞMEZ, diğer şehirler ETKİLENMEZ.
         hedefEyalet.ordu = Math.max(1, Math.floor(hedefEyalet.ordu * 0.1));
 
-        // Eski bug'a sebep olan "ulkeIlhakEdildi" eventi yerine, güvenli bir bildirim eventi kullanıyoruz.
         io.emit('nukleerBildirim', { 
             mesaj: `☢️ KATASTROF! ${oyuncu.ulke}, ${data.isim} eyaletine ICBM fırlattı! Bölgedeki askeri güçler buharlaştı!` 
         });
@@ -287,7 +268,6 @@ setInterval(() => {
             }
         });
         
-        // Mega Fabrika 10 Altın, Endüstri 5 Altın, Yoksa 2 Altın
         let fabrikaGeliri = oyuncu.teknolojiler?.mega_fabrikalar ? 10 : (oyuncu.teknolojiler?.endustri ? 5 : 2);
         oyuncu.para += 30 + (toplamSivilFabrika * fabrikaGeliri);
     });

@@ -10,7 +10,7 @@ window.gosterBildirim = function(mesaj, tur) {
     setTimeout(() => {
         bildirim.style.opacity = "0";
         setTimeout(() => bildirim.remove(), 500);
-    }, 2500); // Bildirim süresi biraz uzatıldı
+    }, 2500);
 };
 
 const app = new PIXI.Application({
@@ -27,8 +27,6 @@ let eyaletlerMap = new Map();
 let seciliEyaletId = null;
 let sunucuEyaletVerileri = {};
 window.benimUlkem = null; 
-
-// Yeni teknolojilerle genişletilmiş hafıza
 window.teknolojilerim = {};
 
 const ulkeRenkleri = {
@@ -119,13 +117,20 @@ async function haritayiYukleVeKur() {
                 mapContainer.scale.set(1);
                 mapContainer.position.set(0, 0);
                 teknolojiArayuzunuGelistir();
+
+                // YENİ: Harita yüklenmesi bitince sunucuya tüm eyalet ID'lerini bildir.
+                // Sunucu eğer veritabanı boşsa (oyun yeni başlıyorsa) bunlara random asker basacak.
+                let eyaletListesi = [];
+                for (let [id, eyalet] of eyaletlerMap) {
+                    eyaletListesi.push({ id: id, sahibi: eyalet.sahibi });
+                }
+                socket.emit('haritaBilgisiGonder', eyaletListesi);
             }
         }
         yukle();
     } catch (e) { console.error(e); }
 }
 
-// AŞIRI GELİŞMİŞ DİNAMİK TEKNOLOJİ AĞACI RENDER
 function teknolojiArayuzunuGelistir() {
     const techModal = document.getElementById('tech-modal');
     if (!techModal) return;
@@ -135,24 +140,18 @@ function teknolojiArayuzunuGelistir() {
     const tumAğacTeknolojileri = [
         { id: 'piyade', name: '⚔️ Piyade Ekipmanları', desc: 'Saldırı gücünü %30 arttırır.', cost: 200, req: null, color: '#00ffff' },
         { id: 'tank', name: '🚜 Zırhlı Birlikler (Tank)', desc: 'Ordunuza tanklar ekler, saldırı gücünü %60 arttırır.', cost: 450, req: 'piyade', color: '#3498db' },
-        
         { id: 'hava_kuvvetleri', name: '✈️ Hava Kuvvetleri', desc: 'Hava üstünlüğü kurar, Saldırıya %40, Savunmaya %20 bonus sağlar.', cost: 550, req: 'piyade', color: '#9b59b6' },
         { id: 'hayalet_ucak', name: '🛸 Hayalet Uçak Filosu', desc: 'Radara yakalanmayan uçaklar, devasa %50 Saldırı bonusu verir.', cost: 900, req: 'hava_kuvvetleri', color: '#8e44ad' },
-
         { id: 'taktik', name: '🧠 Askeri Doktrin & Taktik', desc: 'Savunma gücünü %40 arttırır.', cost: 400, req: null, color: '#f39c12' },
         { id: 'tahkimat', name: '🛡️ Bölgesel Tahkimat Sınırları', desc: 'Savunma gücüne ekstra %20 bonus sağlar.', cost: 350, req: 'taktik', color: '#e67e22' },
-        
         { id: 'fuze', name: '🚀 Balistik Füze Teknolojisi', desc: 'Ağır füze sanayisini başlatır. (ICBM için ön şart)', cost: 600, req: 'taktik', color: '#e74c3c' },
         { id: 'icbm', name: '☢️ ICBM Kıtalararası Füze', desc: 'Sınır bağımsız eyaletlerin ordusunu %90 yok eder.', cost: 1200, req: 'fuze', color: '#c0392b' },
         { id: 'uzay_savunma', name: '🛰️ Lazerli Uzay Savunma Ağı', desc: 'Düşman ICBM nükleer füzelerini havada imha eder! (Anti-Nuke)', cost: 1800, req: 'icbm', color: '#ff0055' },
-
         { id: 'gemi_gucu', name: '⚓ Deniz Hakimiyeti (Donanma)', desc: 'Tüm savaşlara %25 deniz ateş desteği sağlar.', cost: 300, req: null, color: '#1abc9c' },
         { id: 'denizalti', name: '🦈 Nükleer Denizaltılar', desc: 'Donanma gücünü katlar, ekstra %30 saldırı gücü sağlar.', cost: 600, req: 'gemi_gucu', color: '#16a085' },
-
         { id: 'endustri', name: '⚙️ Endüstriyel Altyapı', desc: 'Sivil fabrikaların günlük gelirini 2 altından 5 altına yükseltir.', cost: 500, req: null, color: '#f1c40f' },
         { id: 'maliyet_dusurme', name: '💰 Seri Üretim Hattı', desc: 'Asker üretim maliyetini 100 altından 65 altına düşürür.', cost: 600, req: 'endustri', color: '#2ecc71' },
         { id: 'mega_fabrikalar', name: '🏭 Mega Endüstriyel Kompleks', desc: 'Sivil fabrika gelirini 5 altından 10 altına çıkarır.', cost: 1000, req: 'maliyet_dusurme', color: '#27ae60' },
-
         { id: 'istihbarat', name: '🕵️ Gizli Servis & İstihbarat', desc: 'Düşman zafiyetlerini bulur. Hem saldırıya hem savunmaya %15 bonus.', cost: 450, req: null, color: '#34495e' }
     ];
 
@@ -429,12 +428,10 @@ socket.on('savasSonucu', (data) => {
 
 haritayiYukleVeKur();
 
-// ESKİ ICBM BUG'UNA NEDEN OLAN EVENT SİLİNDİ, YERİNE SADECE BİLDİRİM GÖSTEREN GÜVENLİ BİR YAPI GELDİ
 socket.on('nukleerBildirim', (data) => {
     window.gosterBildirim(data.mesaj, 'nuke');
 });
 
-// Eski 'ulkeIlhakEdildi' eventi de normal savaş zaferi bildirimi olarak kullanılıyorsa güvenli hale getirildi
 socket.on('ulkeIlhakEdildi', (data) => {
     window.gosterBildirim(data.mesaj, 'zafer');
 });
