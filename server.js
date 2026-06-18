@@ -14,6 +14,7 @@ function oyunVerisiniYukle() {
 }
 
 let gameState = oyunVerisiniYukle();
+let resetVotes = new Set(); // Sıfırlama oylarını tutan hafıza alanı (Socket ID'leri)
 
 setInterval(() => {
     fs.writeFileSync(SAVE_FILE, JSON.stringify(gameState, null, 2));
@@ -48,6 +49,9 @@ const techAgaci = {
 
 io.on('connection', (socket) => {
     socket.emit('init', gameState);
+    
+    // Yeni giren oyuncuya güncel oylama durumunu göster
+    socket.emit('oylamaDurumuGuncelle', { oylayanlar: resetVotes.size, toplamOyuncu: Object.keys(gameState.oyuncular).length });
 
     socket.on('hilesiz_altin_al', () => {
         const oyuncu = gameState.oyuncular[socket.id];
@@ -59,11 +63,11 @@ io.on('connection', (socket) => {
 
     socket.on('haritaBilgisiGonder', (eyaletListesi) => {
         if (!gameState.haritaKuruldu) {
-            console.log("Harita ilk defa kuruluyor, tüm eyaletlere rastgele askerler dağıtılıyor...");
+            console.log("Harita kuruluyor, tüm eyaletlere rastgele askerler dağıtılıyor...");
             eyaletListesi.forEach(e => {
                 gameState.eyaletler[e.id] = {
                     sahibi: e.sahibi || "Nötr",
-                    ordu: Math.floor(Math.random() * 6) + 1,
+                    ordu: Math.floor(Math.random() * 6) + 1, // 1-6 arası rastgele dağıtım hattı aktif
                     sivil: 0,
                     askeri: 0
                 };
@@ -93,8 +97,45 @@ io.on('connection', (socket) => {
             }
         };
 
+        // Aktif oyuncu sayısı değiştiği için oylama limitlerini güncelle
+        io.emit('oylamaDurumuGuncelle', { oylayanlar: resetVotes.size, toplamOyuncu: Object.keys(gameState.oyuncular).length });
+
         socket.emit('ulkeSecildi', ulkeAdi);
         io.emit('stateGuncelle', gameState);
+    });
+
+    // %75 YENİDEN BAŞLATMA OYLAMA SİSTEMİ
+    socket.on('resetOyuVer', () => {
+        const oyuncu = gameState.oyuncular[socket.id];
+        if (!oyuncu) {
+            socket.emit('hataMesaji', 'Sıfırlama oylamasına katılmak için önce bir ülke seçmelisin!');
+            return;
+        }
+
+        if (resetVotes.has(socket.id)) {
+            resetVotes.delete(socket.id); // Tıklarsa oyunu geri çeker
+        } else {
+            resetVotes.add(socket.id); // Tıklarsa oy verir
+        }
+
+        let toplamOyuncu = Object.keys(gameState.oyuncular).length;
+        let oylayanlar = resetVotes.size;
+        let oran = toplamOyuncu > 0 ? (oylayanlar / toplamOyuncu) : 0;
+
+        io.emit('oylamaDurumuGuncelle', { oylayanlar, toplamOyuncu });
+
+        // %75 Baraj Kontrolü
+        if (toplamOyuncu > 0 && oran >= 0.75) {
+            console.log("Oylama %75 barajını geçti! Oyun sıfırlanıyor...");
+            gameState = { gun: 1, eyaletler: {}, oyuncular: {}, haritaKuruldu: false };
+            resetVotes.clear();
+            
+            // Dosya kaydını temizle ki sunucu baştan başlasın ve ordu güçlerini yeniden rastgele dağıtsın
+            if (fs.existsSync(SAVE_FILE)) {
+                fs.unlinkSync(SAVE_FILE);
+            }
+            io.emit('oyunSifirlandi');
+        }
     });
 
     socket.on('islemYap', (data) => {
@@ -137,14 +178,14 @@ io.on('connection', (socket) => {
         const savunanEyalet = gameState.eyaletler[savunanId];
         if (!savunanEyalet || savunanEyalet.sahibi === oyuncu.ulke) return;
 
-        // YENİ: DENİZ AŞIRI VE MENZİL KONTROLÜ
+        // SUNUCU TARAFINDA UZAK MESAFE ÇİFT TEKNOLOJİ KONTROLÜ (GÜVENLİK)
         if (!data.komsuMu) {
             if (!data.menzilUygun) {
                 socket.emit('hataMesaji', '📍 Hedef çok uzak! Saldırı menzili dışında.');
                 return;
             }
-            if (!oyuncu.teknolojiler?.gemi_gucu) {
-                socket.emit('hataMesaji', '🚫 Deniz çıkartması için "⚓ Deniz Hakimiyeti (Donanma)" teknolojisi gerekiyor!');
+            if (!oyuncu.teknolojiler?.gemi_gucu || !oyuncu.teknolojiler?.hava_kuvvetleri) {
+                socket.emit('hataMesaji', '🚫 Uzak mesafe saldırısı için hem Donanma hem de Hava Kuvvetleri teknolojileri şart!');
                 return;
             }
         }
@@ -193,10 +234,10 @@ io.on('connection', (socket) => {
         let farkOrani = efektifSaldiran / (efektifSavunan || 1); 
 
         let kazanmaSansi = 0;
-        if (farkOrani >= 2.0) kazanmaSansi = 1.0;         // %100 Kazanır
-        else if (farkOrani >= 1.5) kazanmaSansi = 0.5;    // %50 Kazanır
-        else if (farkOrani >= 1.0) kazanmaSansi = 0.05;   // %5 Kazanır
-        else kazanmaSansi = -1;                           // Felaket
+        if (farkOrani >= 2.0) kazanmaSansi = 1.0;
+        else if (farkOrani >= 1.5) kazanmaSansi = 0.5;
+        else if (farkOrani >= 1.0) kazanmaSansi = 0.05;
+        else kazanmaSansi = -1;
 
         let zar = Math.random();
 
@@ -209,7 +250,7 @@ io.on('connection', (socket) => {
             if (kazanmaSansi === -1) {
                 saldiranEyalet.sahibi = savunanEyalet.sahibi;
                 saldiranEyalet.ordu = Math.max(1, Math.floor(savunanEyalet.ordu * 0.2)); 
-                socket.emit('savasSonucu', { kazanan: false, mesaj: `FELAKET! Düşmandan zayıftın. Saldırın başarısız oldu ve sınır eyaletini kaybettin!` });
+                socket.emit('savasSonucu', { kazanan: false, mesaj: `FELAKET! Sınır eyaletini kaybettin!` });
             } else {
                 saldiranEyalet.ordu = Math.max(1, Math.floor(saldiranEyalet.ordu * 0.5));
                 socket.emit('savasSonucu', { kazanan: false, mesaj: `Yenilgi! ${data.isim} saldırısı püskürtüldü.` });
@@ -265,7 +306,7 @@ io.on('connection', (socket) => {
             const savunanOyuncu = gameState.oyuncular[savunanOyuncuSocket];
             if (savunanOyuncu.teknolojiler?.uzay_savunma) {
                 oyuncu.para -= 500;
-                io.emit('savasSonucu', { kazanan: false, mesaj: `🚀❌ NÜKLEER SAVUNMA! ${hedefEyalet.sahibi} 'Uzay Savunma Ağı' ile füzenizi havada imha etti!` });
+                io.emit('savasSonucu', { kazanan: false, mesaj: `🚀❌ NÜKLEER SAVUNMA! Havada imha edildi!` });
                 io.emit('stateGuncelle', gameState);
                 return;
             }
@@ -275,7 +316,7 @@ io.on('connection', (socket) => {
         hedefEyalet.ordu = Math.max(1, Math.floor(hedefEyalet.ordu * 0.1));
 
         io.emit('nukleerBildirim', { 
-            mesaj: `☢️ KATASTROF! ${oyuncu.ulke}, ${data.isim} eyaletine ICBM fırlattı! Bölgedeki askeri güçler buharlaştı!` 
+            mesaj: `☢️ KATASTROF! ${oyuncu.ulke}, ${data.isim} eyaletine ICBM fırlattı!` 
         });
         
         io.emit('stateGuncelle', gameState);
@@ -283,6 +324,8 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         delete gameState.oyuncular[socket.id];
+        resetVotes.delete(socket.id); // Çıkan oyuncunun oyunu sil ki oylama kilitlenmesin
+        io.emit('oylamaDurumuGuncelle', { oylayanlar: resetVotes.size, toplamOyuncu: Object.keys(gameState.oyuncular).length });
     });
 });
 

@@ -188,7 +188,6 @@ function teknolojiArayuzunuGelistir() {
     flexContainer.innerHTML = htmlIcerik;
 }
 
-// YENİ ZEKİ MESAFE VE KOMŞULUK SİSTEMİ
 window.mesafeHesapla = function(hedefId) {
     const hedefEyalet = eyaletlerMap.get(hedefId);
     if (!hedefEyalet || !hedefEyalet.sinirlar) return { komsu: false, mesafe: 9999 };
@@ -199,19 +198,18 @@ window.mesafeHesapla = function(hedefId) {
 
     let komsuMu = false;
     let enKisaMesafe = 999999;
+    const K_TOLERANS = 8; 
 
     for (let [id, eyalet] of eyaletlerMap) {
         if (eyalet.sahibi === window.benimUlkem && eyalet.sinirlar) {
             const e = eyalet.sinirlar;
             
-            // 1. GERÇEK KARA SINIRI (Padding yok, tam temas lazım)
             const kesisiyorMu = !(
-                h.maxX < e.minX || h.minX > e.maxX || 
-                h.maxY < e.minY || h.minY > e.maxY
+                h.maxX < e.minX - K_TOLERANS || h.minX > e.maxX + K_TOLERANS || 
+                h.maxY < e.minY - K_TOLERANS || h.minY > e.maxY + K_TOLERANS
             );
             if (kesisiyorMu) komsuMu = true;
 
-            // 2. MERKEZLER ARASI MESAFE (Deniz çıkartması menzili için)
             const eKeskX = (e.minX + e.maxX) / 2;
             const eKeskY = (e.minY + e.maxY) / 2;
             const mesafe = Math.sqrt(Math.pow(hKeskX - eKeskX, 2) + Math.pow(hKeskY - eKeskY, 2));
@@ -272,10 +270,10 @@ function eyaletSec(id, graphicsObj) {
             if (analiz.komsu) {
                 htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ Kara Saldırısı</button>`;
             } else if (analiz.mesafe < 400) { 
-                if (window.teknolojilerim.gemi_gucu) {
-                    htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">⚓ Denizden Saldır!</button>`;
+                if (window.teknolojilerim.gemi_gucu && window.teknolojilerim.hava_kuvvetleri) {
+                    htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">🚀 Uzak Mesafe Saldırısı!</button>`;
                 } else {
-                    htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:13px; margin-bottom:10px;">🚫 Deniz çıkartması için "Donanma" şart!</div>`;
+                    htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:12px; margin-bottom:10px; line-height: 1.4;">🚫 Uzak mesafe saldırısı için hem "Donanma" hem de "Hava Kuvvetleri" teknolojileri şart!</div>`;
                 }
             } else {
                 htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px; margin-bottom:10px;">📍 Hedef çok uzak! (Menzil Dışı)</div>`;
@@ -306,8 +304,6 @@ window.eyaletIslem = function(tur) {
 window.eyaleteSaldir = function() {
     if (!seciliEyaletId) return;
     const sabitVeri = eyaletlerMap.get(seciliEyaletId);
-    
-    // Sunucuya komşuluk ve menzil bilgilerini iletiyoruz
     const analiz = window.mesafeHesapla(seciliEyaletId);
     
     socket.emit('saldiri', { 
@@ -315,7 +311,7 @@ window.eyaleteSaldir = function() {
         isim: sabitVeri.isim, 
         eskiSahibi: sabitVeri.sahibi, 
         komsuMu: analiz.komsu,
-        menzilUygun: (analiz.mesafe < 400)
+        menzilUygun: (analiz.mesafe < 400) 
     });
 };
 
@@ -445,10 +441,10 @@ socket.on('stateGuncelle', (serverState) => {
                 if (analiz.komsu) {
                     htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ Kara Saldırısı</button>`;
                 } else if (analiz.mesafe < 400) { 
-                    if (window.teknolojilerim.gemi_gucu) {
-                        htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">⚓ Denizden Saldır!</button>`;
+                    if (window.teknolojilerim.gemi_gucu && window.teknolojilerim.hava_kuvvetleri) {
+                        htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">🚀 Uzak Mesafe Saldırısı!</button>`;
                     } else {
-                        htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:13px; margin-bottom:10px;">🚫 Deniz çıkartması için "Donanma" şart!</div>`;
+                        htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:12px; margin-bottom:10px; line-height: 1.4;">🚫 Uzak mesafe saldırısı için hem "Donanma" hem de "Hava Kuvvetleri" teknolojileri şart!</div>`;
                     }
                 } else {
                     htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px; margin-bottom:10px;">📍 Hedef çok uzak! (Menzil Dışı)</div>`;
@@ -476,4 +472,40 @@ socket.on('nukleerBildirim', (data) => {
 
 socket.on('ulkeIlhakEdildi', (data) => {
     window.gosterBildirim(data.mesaj, 'zafer');
+});
+
+// Oyunu dinamik olarak sıfırlama oylaması butonu oluşturma ve üst bara ekleme
+setTimeout(() => {
+    const topBar = document.getElementById('top-bar');
+    if (topBar) {
+        const voteBtn = document.createElement('button');
+        voteBtn.id = 'vote-reset-btn';
+        voteBtn.className = 'btn';
+        voteBtn.style = 'width: auto; background: #c0392b; border: 1px solid #e74c3c; margin-left: 10px; font-size: 13px; padding: 6px 12px; cursor: pointer; border-radius: 4px; color: white; font-weight: bold; font-family: sans-serif; pointer-events: auto;';
+        voteBtn.innerText = '🔄 Oyunu Sıfırla (0/0)';
+        voteBtn.onclick = () => {
+            socket.emit('resetOyuVer');
+        };
+        topBar.appendChild(voteBtn);
+    }
+}, 1000);
+
+// Sunucudan gelen oylama sayılarını arayüze basar
+socket.on('oylamaDurumuGuncelle', (data) => {
+    const voteBtn = document.getElementById('vote-reset-btn');
+    if (voteBtn) {
+        voteBtn.innerText = `🔄 Oyunu Sıfırla (${data.oylayanlar}/${data.toplamOyuncu})`;
+        // Eğer oyladıysa rengini yeşil yapıp feedback verelim
+        if (data.oylayanlar > 0) {
+            voteBtn.style.backgroundColor = "#e67e22";
+        } else {
+            voteBtn.style.backgroundColor = "#c0392b";
+        }
+    }
+});
+
+// Baraj aşılıp oyun sıfırlandığında tüm oyuncuların ekranını temizleyip yeniler
+socket.on('oyunSifirlandi', () => {
+    alert("Oylama %75 barajını geçti! Oyun sıfırlandı, yeni dünya düzeni kuruluyor...");
+    location.reload();
 });
