@@ -188,23 +188,39 @@ function teknolojiArayuzunuGelistir() {
     flexContainer.innerHTML = htmlIcerik;
 }
 
-window.sinirKomsusuMu = function(hedefId) {
+// YENİ ZEKİ MESAFE VE KOMŞULUK SİSTEMİ
+window.mesafeHesapla = function(hedefId) {
     const hedefEyalet = eyaletlerMap.get(hedefId);
-    if (!hedefEyalet || !hedefEyalet.sinirlar) return true; 
+    if (!hedefEyalet || !hedefEyalet.sinirlar) return { komsu: false, mesafe: 9999 };
+
     const h = hedefEyalet.sinirlar;
-    const padding = 20; 
+    const hKeskX = (h.minX + h.maxX) / 2;
+    const hKeskY = (h.minY + h.maxY) / 2;
+
+    let komsuMu = false;
+    let enKisaMesafe = 999999;
+
     for (let [id, eyalet] of eyaletlerMap) {
         if (eyalet.sahibi === window.benimUlkem && eyalet.sinirlar) {
             const e = eyalet.sinirlar;
+            
+            // 1. GERÇEK KARA SINIRI (Padding yok, tam temas lazım)
             const kesisiyorMu = !(
-                h.maxX < e.minX - padding || h.minX > e.maxX + padding || 
-                h.maxY < e.minY - padding || h.minY > e.maxY + padding
+                h.maxX < e.minX || h.minX > e.maxX || 
+                h.maxY < e.minY || h.minY > e.maxY
             );
-            if (kesisiyorMu) return true;
+            if (kesisiyorMu) komsuMu = true;
+
+            // 2. MERKEZLER ARASI MESAFE (Deniz çıkartması menzili için)
+            const eKeskX = (e.minX + e.maxX) / 2;
+            const eKeskY = (e.minY + e.maxY) / 2;
+            const mesafe = Math.sqrt(Math.pow(hKeskX - eKeskX, 2) + Math.pow(hKeskY - eKeskY, 2));
+            
+            if (mesafe < enKisaMesafe) enKisaMesafe = mesafe;
         }
     }
-    return false;
-};  
+    return { komsu: komsuMu, mesafe: enKisaMesafe };
+};
 
 function eyaletSec(id, graphicsObj) {
     if (seciliEyaletId && eyaletlerMap.has(seciliEyaletId)) {
@@ -249,22 +265,28 @@ function eyaletSec(id, graphicsObj) {
         document.getElementById('panel-ordu-enemy').innerText = sunucuVerisi.ordu || 1;
         
         const saldiriAlani = document.getElementById('saldiri-alani');
-        let htmlIcerik = "";
+        if(saldiriAlani) {
+            let htmlIcerik = "";
+            const analiz = window.mesafeHesapla(id);
 
-        // DENİZ VE KARA SALDIRISI ARAYÜZÜ KONTROLÜ
-        if (window.sinirKomsusuMu(id)) {
-            htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ Kara Saldırısı</button>`;
-        } else if (window.teknolojilerim.gemi_gucu) {
-            htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">⚓ Denizden Saldır!</button>`;
-        } else {
-            htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:13px; margin-bottom:10px;">🚫 Deniz aşırı saldırı için "Donanma" gereklidir!</div>`;
+            if (analiz.komsu) {
+                htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ Kara Saldırısı</button>`;
+            } else if (analiz.mesafe < 400) { 
+                if (window.teknolojilerim.gemi_gucu) {
+                    htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">⚓ Denizden Saldır!</button>`;
+                } else {
+                    htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:13px; margin-bottom:10px;">🚫 Deniz çıkartması için "Donanma" şart!</div>`;
+                }
+            } else {
+                htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px; margin-bottom:10px;">📍 Hedef çok uzak! (Menzil Dışı)</div>`;
+            }
+
+            if (window.teknolojilerim.icbm) {
+                htmlIcerik += `<button class="btn" style="background:#d35400; border-color:#e67e22; margin-top:8px;" onclick="window.icbmFirlat()">☢️ ICBM FIRLAT (500 💰)</button>`;
+            }
+
+            saldiriAlani.innerHTML = htmlIcerik;
         }
-
-        if (window.teknolojilerim.icbm) {
-            htmlIcerik += `<button class="btn" style="background:#d35400; border-color:#e67e22; margin-top:8px;" onclick="window.icbmFirlat()">☢️ ICBM FIRLAT (500 💰)</button>`;
-        }
-
-        saldiriAlani.innerHTML = htmlIcerik;
     }
     document.getElementById('detail-panel').style.display = "block";
 }
@@ -284,9 +306,17 @@ window.eyaletIslem = function(tur) {
 window.eyaleteSaldir = function() {
     if (!seciliEyaletId) return;
     const sabitVeri = eyaletlerMap.get(seciliEyaletId);
-    // YENİ: Sunucuya komşu olup olmadığını bildiriyoruz, böylece deniz/kara saldırısı ayrımı yapabilir
-    const komsuMu = window.sinirKomsusuMu(seciliEyaletId);
-    socket.emit('saldiri', { id: seciliEyaletId, isim: sabitVeri.isim, eskiSahibi: sabitVeri.sahibi, komsuMu: komsuMu });
+    
+    // Sunucuya komşuluk ve menzil bilgilerini iletiyoruz
+    const analiz = window.mesafeHesapla(seciliEyaletId);
+    
+    socket.emit('saldiri', { 
+        id: seciliEyaletId, 
+        isim: sabitVeri.isim, 
+        eskiSahibi: sabitVeri.sahibi, 
+        komsuMu: analiz.komsu,
+        menzilUygun: (analiz.mesafe < 400)
+    });
 };
 
 window.teknolojiPaneliniAc = function() {
@@ -410,13 +440,18 @@ socket.on('stateGuncelle', (serverState) => {
             const saldiriAlani = document.getElementById('saldiri-alani');
             if(saldiriAlani) {
                 let htmlIcerik = "";
+                const analiz = window.mesafeHesapla(seciliEyaletId);
 
-                if (window.sinirKomsusuMu(seciliEyaletId)) {
+                if (analiz.komsu) {
                     htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ Kara Saldırısı</button>`;
-                } else if (window.teknolojilerim.gemi_gucu) {
-                    htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">⚓ Denizden Saldır!</button>`;
+                } else if (analiz.mesafe < 400) { 
+                    if (window.teknolojilerim.gemi_gucu) {
+                        htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">⚓ Denizden Saldır!</button>`;
+                    } else {
+                        htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:13px; margin-bottom:10px;">🚫 Deniz çıkartması için "Donanma" şart!</div>`;
+                    }
                 } else {
-                    htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:13px; margin-bottom:10px;">🚫 Deniz aşırı saldırı için "Donanma" gereklidir!</div>`;
+                    htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px; margin-bottom:10px;">📍 Hedef çok uzak! (Menzil Dışı)</div>`;
                 }
 
                 if (window.teknolojilerim.icbm) {
