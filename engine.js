@@ -145,7 +145,7 @@ function teknolojiArayuzunuGelistir() {
         { id: 'fuze', name: '🚀 Balistik Füze Teknolojisi', desc: 'Ağır füze sanayisini başlatır. (ICBM için ön şart)', cost: 600, req: 'taktik', color: '#e74c3c' },
         { id: 'icbm', name: '☢️ ICBM Kıtalararası Füze', desc: 'Sınır bağımsız eyaletlerin ordusunu %90 yok eder.', cost: 1200, req: 'fuze', color: '#c0392b' },
         { id: 'uzay_savunma', name: '🛰️ Lazerli Uzay Savunma Ağı', desc: 'Düşman ICBM nükleer füzelerini havada imha eder! (Anti-Nuke)', cost: 1800, req: 'icbm', color: '#ff0055' },
-        { id: 'gemi_gucu', name: '⚓ Deniz Hakimiyeti (Donanma)', desc: 'Deniz aşırı saldırılara izin verir ve savaşlara %25 güç sağlar.', cost: 300, req: null, color: '#1abc9c' },
+        { id: 'gemi_gucu', name: '⚓ Deniz Hakimiyeti (Donanma)', desc: 'Deniz aşırı saldırılara izin verir and savaşlara %25 güç sağlar.', cost: 300, req: null, color: '#1abc9c' },
         { id: 'denizalti', name: '🦈 Nükleer Denizaltılar', desc: 'Donanma gücünü katlar, ekstra %30 saldırı gücü sağlar.', cost: 600, req: 'gemi_gucu', color: '#16a085' },
         { id: 'endustri', name: '⚙️ Endüstriyel Altyapı', desc: 'Sivil fabrikaların günlük gelirini 2 altından 5 altına yükseltir.', cost: 500, req: null, color: '#f1c40f' },
         { id: 'maliyet_dusurme', name: '💰 Seri Üretim Hattı', desc: 'Asker üretim maliyetini 100 altından 65 altına düşürür.', cost: 600, req: 'endustri', color: '#2ecc71' },
@@ -198,7 +198,7 @@ window.mesafeHesapla = function(hedefId) {
 
     let komsuMu = false;
     let enKisaMesafe = 999999;
-    const K_TOLERANS = 1.5; // Küçültüldü: Ekranda küçük kalan eyaletlerin hatalı çakışmasını engeller.
+    const K_TOLERANS = 0.5; // Daha da küçültüldü: Sadece birbirine tam dokunan sınırları yakalar.
 
     for (let [id, eyalet] of eyaletlerMap) {
         if (eyalet.sahibi === window.benimUlkem && eyalet.sinirlar) {
@@ -215,8 +215,8 @@ window.mesafeHesapla = function(hedefId) {
             
             if (mesafe < enKisaMesafe) enKisaMesafe = mesafe;
 
-            // Çifte Güvenlik Kilidi: Sınırlar kesişse bile merkezler arası mesafe 25 pikselden fazlaysa komşu sayma.
-            if (kesisiyorMu && mesafe < 25) {
+            // Çifte Güvenlik Kilidi: Sınırlar çok az yaklaşsa bile merkezler arası mesafe 12 pikselden fazlaysa komşu sayma.
+            if (kesisiyorMu && mesafe < 12) {
                 komsuMu = true;
             }
         }
@@ -273,11 +273,11 @@ function eyaletSec(id, graphicsObj) {
 
             if (analiz.komsu) {
                 htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ Kara Saldırısı</button>`;
-            } else if (analiz.mesafe < 150) { // Menzil limiti 400'den 150'ye düşürüldü.
+            } else if (analiz.mesafe < 150) { 
                 if (window.teknolojilerim.gemi_gucu && window.teknolojilerim.hava_kuvvetleri) {
                     htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">🚀 Uzak Mesafe Saldırısı!</button>`;
                 } else {
-                    htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:12px; margin-bottom:10px; line-height: 1.4;">🚫 Uzak mesafe saldırısı için hem "Donanma" hem de "Hava Kuvvetleri" teknolojileri şart!</div>`;
+                    htmlIcerik += `<div class="stat" style="color:#e74c3c; text-align:center; font-size:12px; margin-bottom:10px; line-height: 1.4;">🚫 Uzak mesafe saldırısı için hem "Donanma" hem de "Hava Kuvvetleri" technologies şart!</div>`;
                 }
             } else {
                 htmlIcerik += `<div class="stat" style="color:#7f8c8d; text-align:center; font-size:13px; margin-bottom:10px;">📍 Hedef çok uzak! (Menzil Dışı)</div>`;
@@ -315,7 +315,7 @@ window.eyaleteSaldir = function() {
         isim: sabitVeri.isim, 
         eskiSahibi: sabitVeri.sahibi, 
         komsuMu: analiz.komsu,
-        menzilUygun: (analiz.mesafe < 150) // Menzil doğrulaması 150 olarak güncellendi.
+        menzilUygun: (analiz.mesafe < 150) 
     });
 };
 
@@ -444,7 +444,7 @@ socket.on('stateGuncelle', (serverState) => {
 
                 if (analiz.komsu) {
                     htmlIcerik += `<button class="btn btn-saldiri" onclick="window.eyaleteSaldir()">⚔️ Kara Saldırısı</button>`;
-                } else if (analiz.mesafe < 150) { // Dinamik güncelleme için de sınır 150 yapıldı.
+                } else if (analiz.mesafe < 150) { 
                     if (window.teknolojilerim.gemi_gucu && window.teknolojilerim.hava_kuvvetleri) {
                         htmlIcerik += `<button class="btn btn-saldiri" style="background:#2980b9; border-color:#3498db;" onclick="window.eyaleteSaldir()">🚀 Uzak Mesafe Saldırısı!</button>`;
                     } else {
