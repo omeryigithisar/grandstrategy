@@ -1,20 +1,15 @@
-// engine.js - Tam ve Temiz Sürüm
-// Localhost yerine artık internetteki sunucuna bağlanacak
-const socket = io("https://senin-oyunun-backend.onrender.com"); 
+const socket = io("https://grandstrategy-1.onrender.com"); 
 
-// Akıcı ve Kilitlenmeyen Bildirim Sistemi
 window.gosterBildirim = function(mesaj, tur) {
     const container = document.getElementById('notification-container');
     const bildirim = document.createElement('div');
     bildirim.className = 'toast';
     
-    // Zaferse yeşil, kayıpsa kırmızı tema
     bildirim.style.backgroundColor = (tur === 'zafer') ? "#27ae60" : "#c0392b";
     bildirim.innerText = mesaj;
 
     container.appendChild(bildirim);
 
-    // 1.5 Saniye sonra yumuşakça kaybolsun
     setTimeout(() => {
         bildirim.style.opacity = "0";
         setTimeout(() => bildirim.remove(), 500);
@@ -60,12 +55,9 @@ function koordinatDonustur(lon, lat) {
     return [x, y];
 }
 
-// Sınırları hesaplayarak çizen poligon fonksiyonu
-// 1. POLİGON ÇİZİM FONKSİYONU (BEYAZ BAZLI)
 function poligonCizVeSinirBul(graphics, coords, sinirlar) { 
     if (!coords || coords.length === 0) return;
     
-    // SİHİRLİ DOKUNUŞ: PIXI.js'de tint (renk değiştirme) yapabilmek için baz renk BEYAZ olmalı!
     graphics.beginFill(0xFFFFFF); 
     graphics.lineStyle(0.3, 0x000000, 0.5); 
     
@@ -86,7 +78,6 @@ function poligonCizVeSinirBul(graphics, coords, sinirlar) {
     graphics.endFill();
 }
 
-// 2. HARİTA YÜKLEME VE İLK RENK ATAMASI
 async function haritayiYukleVeKur() {
     try {
         const response = await fetch('admin1.json');
@@ -108,11 +99,9 @@ async function haritayiYukleVeKur() {
                 let sinirlar = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
                 const g = new PIXI.Graphics();
                 
-                // ŞEKLİN İLK RENGİNİ BURADA FİLTRE (TINT) OLARAK VERİYORUZ!
                 g.tint = eyaletRengi;
 
                 if (feature.geometry.type === "Polygon") {
-                    // renk parametresini çıkardık
                     feature.geometry.coordinates.forEach(coords => poligonCizVeSinirBul(g, coords, sinirlar));
                 } else if (feature.geometry.type === "MultiPolygon") {
                     feature.geometry.coordinates.forEach(poly => poly.forEach(coords => poligonCizVeSinirBul(g, coords, sinirlar)));
@@ -145,20 +134,17 @@ async function haritayiYukleVeKur() {
     } catch (e) { console.error(e); }
 }
 
-// KOMŞULUK ALGORİTMASI
 window.sinirKomsusuMu = function(hedefId) {
     const hedefEyalet = eyaletlerMap.get(hedefId);
-    if (!hedefEyalet || !hedefEyalet.sinirlar) return true; // Hata olmasın diye varsayılan true
+    if (!hedefEyalet || !hedefEyalet.sinirlar) return true; 
 
     const h = hedefEyalet.sinirlar;
-    const padding = 20; // Kaç piksel yakınındaysa komşu sayılsın toleransı
+    const padding = 20; 
 
     for (let [id, eyalet] of eyaletlerMap) {
-        // Sadece kendi ülkemizin sınır kutularını (Bounding Box) kontrol et
         if (eyalet.sahibi === window.benimUlkem && eyalet.sinirlar) {
             const e = eyalet.sinirlar;
             
-            // İki kutu kesişiyor veya birbirine 'padding' kadar yakın mı?
             const kesisiyorMu = !(
                 h.maxX < e.minX - padding || 
                 h.minX > e.maxX + padding || 
@@ -166,18 +152,16 @@ window.sinirKomsusuMu = function(hedefId) {
                 h.minY > e.maxY + padding
             );
             
-            if (kesisiyorMu) return true; // Sınırda!
+            if (kesisiyorMu) return true;
         }
     }
-    return false; // Hiçbir toprağına temas etmiyor
+    return false;
 };  
-// 3. EYALET SEÇİMİ VE RENK SIFIRLAMA
+
 function eyaletSec(id, graphicsObj) {
-    // Önceki seçili eyaleti KENDİ GERÇEK NET RENGİNE döndür
     if (seciliEyaletId && eyaletlerMap.has(seciliEyaletId)) {
         let eskiEyalet = eyaletlerMap.get(seciliEyaletId);
         if (eskiEyalet.graphicsRef) {
-            // Eğer bizim ülkemizse bizim rengimiz, değilse orijinal rengi
             if (window.benimUlkem && eskiEyalet.sahibi === window.benimUlkem) {
                 eskiEyalet.graphicsRef.tint = ulkeRenkleri[window.benimUlkem] || 0xcc2929;
             } else {
@@ -187,7 +171,7 @@ function eyaletSec(id, graphicsObj) {
     }
 
     seciliEyaletId = id;
-    graphicsObj.tint = 0xf1c40f; // Seçileni tam parlak Sarı yap
+    graphicsObj.tint = 0xf1c40f; 
 
     const sabitVeri = eyaletlerMap.get(id);
     if (sunucuEyaletVerileri[id]) {
@@ -246,11 +230,9 @@ window.eyaletIslem = function(tur) {
     socket.emit('islemYap', { eyaletId: seciliEyaletId, tur: tur, sahibi: sabitVeri.sahibi });
 };
 
-// 2. window.eyaleteSaldir fonksiyonunu eski sahibini de gönderecek şekilde güncelle:
 window.eyaleteSaldir = function() {
     if (!seciliEyaletId) return;
     const sabitVeri = eyaletlerMap.get(seciliEyaletId);
-    // Eski sahibini de sunucuya yolluyoruz ki Başkent düşerse kimin yıkılacağını bilsin
     socket.emit('saldiri', { id: seciliEyaletId, isim: sabitVeri.isim, eskiSahibi: sabitVeri.sahibi });
 };
 
@@ -307,7 +289,6 @@ socket.on('hataMesaji', (mesaj) => {
     window.gosterBildirim(mesaj, 'kayip'); 
 });
 
-// 1. STATE GUNCELLE DİNLEYİCİSİ (Arayüz Kilitleme Hatası Düzeltildi)
 socket.on('stateGuncelle', (serverState) => {
     document.getElementById('day-counter').innerText = serverState.gun;
     sunucuEyaletVerileri = serverState.eyaletler;
@@ -315,16 +296,12 @@ socket.on('stateGuncelle', (serverState) => {
     const oyuncum = serverState.oyuncular[socket.id];
     if(oyuncum) document.getElementById('my-gold').innerText = oyuncum.para;
 
-    // Harita Renklerini ve Sahiplerini Güncelle
     for (let [id, eyalet] of eyaletlerMap) {
         if (sunucuEyaletVerileri[id]) {
             let yeniSahibi = sunucuEyaletVerileri[id].sahibi;
-            
-            // Hafızadaki sahibi güncelle
             eyalet.sahibi = yeniSahibi;
 
             if (eyalet.graphicsRef) {
-                // Eğer bu eyalet şu an SEÇİLİ OLAN eyalet DEĞİLSE normal rengine boya
                 if (id !== seciliEyaletId) {
                     if (window.benimUlkem && yeniSahibi === window.benimUlkem) {
                         eyalet.graphicsRef.tint = ulkeRenkleri[window.benimUlkem] || 0xcc2929;
@@ -336,8 +313,6 @@ socket.on('stateGuncelle', (serverState) => {
         }
     }
 
-    // PANELİ GÜNCELLEME SADECE OYUNCU ÜLKE SEÇTİYSE TETİKLENSİN!
-    // Bu sayede ülke seçmeye çalışırken panel kendi kendine "Saldır" moduna dönmeyecek.
     if (window.benimUlkem && seciliEyaletId && eyaletlerMap.has(seciliEyaletId)) {
         const sabitVeri = eyaletlerMap.get(seciliEyaletId);
         
@@ -372,16 +347,13 @@ socket.on('savasSonucu', (data) => {
 
 haritayiYukleVeKur();
 
-// İLHAK (ANNEXATION) DİNLEYİCİSİ
 socket.on('ulkeIlhakEdildi', (data) => {
     window.gosterBildirim(data.mesaj, 'zafer');
     
-    // Haritadaki o ülkeye ait HER ŞEYİ yeni sahibine geçir
     for (let [id, eyalet] of eyaletlerMap) {
         if (eyalet.sahibi === data.kaybeden) {
             eyalet.sahibi = data.kazanan;
             if (eyalet.graphicsRef) {
-                // Biz kazandıysak ana rengimize, başka biriyse rastgele renge boyansın
                 if (window.benimUlkem === data.kazanan) {
                     eyalet.graphicsRef.tint = ulkeRenkleri[window.benimUlkem] || 0xcc2929;
                 } else {
@@ -390,6 +362,5 @@ socket.on('ulkeIlhakEdildi', (data) => {
             }
         }
     }
-    // Seçili bir yer varsa paneli anlık yenile
     if (seciliEyaletId) eyaletSec(seciliEyaletId, eyaletlerMap.get(seciliEyaletId).graphicsRef);
 });

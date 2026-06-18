@@ -17,10 +17,8 @@ setInterval(() => {
     console.log("Oyun durumu kaydedildi.");
 }, 10000);
 
-// server.js - Tam ve Düzeltilmiş Sürüm
 const express = require('express');
 const app = express();
-// Hata buradaydı: İsmini 'server' yaptık ki en alttaki server.listen ile tam eşleşsin!
 const server = require('http').createServer(app);
 const io = require('socket.io')(server, { cors: { origin: "*" } });
 
@@ -32,10 +30,9 @@ if (!gameState || !gameState.gun) {
     };
 }
 
-// OYUNUN BAŞKENTLERİ (Haritadaki 'name' verisiyle aynı olmalı)
 const baskentler = {
     "Turkey": "Ankara",
-    "Syria": "Hasaka (Al Haksa)", // Test edebilmen için Hasakah yaptım, sonra "Damascus" yaparsın
+    "Syria": "Hasaka (Al Haksa)",
     "Iraq": "Baghdad",
     "Greece": "Attica",
     "Iran": "Tehran"
@@ -48,32 +45,28 @@ io.on('connection', (socket) => {
     socket.on('ulkeSec', (ulkeAdi) => {
         let ulkeDoluMu = Object.values(gameState.oyuncular).some(p => p.ulke === ulkeAdi);
         if (ulkeDoluMu) {
-            socket.emit('hata', 'Bu ülke zaten seçilmiş!');
+            socket.emit('hataMesaji', 'Bu ülke zaten seçilmiş!');
             return;
         }
 
-        // Oyuncuyu kaydet
         gameState.oyuncular[socket.id] = {
             ulke: ulkeAdi,
             para: 500,
             baskent: baskentler[ulkeAdi] || "Bilinmiyor"
         };
 
-        // Eğer haritada bu ülkenin eyaletleri henüz oluşturulmadıysa ilk kurulumu yap
-        // Not: Gerçek harita verilerine göre (admin1.json) eyalet ID'lerini eşitlemelisin.
-        
-        socket.emit('ulkeOnay', gameState.oyuncular[socket.id]);
-        io.emit('guncelleme', gameState);
+        // İstemci 'ulkeSecildi' bekliyor
+        socket.emit('ulkeSecildi', ulkeAdi);
+        io.emit('stateGuncelle', gameState); // guncelleme -> stateGuncelle yapıldı
     });
 
     // 2. EYALET İŞLEMLERİ (ASKER ÜRETİMİ / FABRİKA KURUMU)
-    socket.on('eyaletIslem', (data) => {
+    socket.on('islemYap', (data) => { // eyaletIslem -> islemYap yapıldı
         const oyuncu = gameState.oyuncular[socket.id];
         if (!oyuncu) return;
 
-        const { eyaletId, tip } = data;
+        const { eyaletId, tur } = data; // tip -> tur yapıldı
         
-        // Eyalet haritada yoksa önce oluştur
         if (!gameState.eyaletler[eyaletId]) {
             gameState.eyaletler[eyaletId] = { sahibi: oyuncu.ulke, ordu: 1, sivil: 0, askeri: 0 };
         }
@@ -81,44 +74,61 @@ io.on('connection', (socket) => {
         const eyalet = gameState.eyaletler[eyaletId];
 
         if (eyalet.sahibi !== oyuncu.ulke) {
-            socket.emit('hata', 'Bu eyalet senin değil!');
+            socket.emit('hataMesaji', 'Bu eyalet senin değil!');
             return;
         }
 
-        if (tip === 'ordu') {
+        if (tur === 'ordu') {
             if (oyuncu.para >= 100) {
                 oyuncu.para -= 100;
                 eyalet.ordu = (eyalet.ordu || 0) + 1;
             } else {
-                socket.emit('hata', 'Yetersiz altın!');
+                socket.emit('hataMesaji', 'Yetersiz altın!');
             }
-        } else if (tip === 'sivil') {
+        } else if (tur === 'sivil') {
             if (oyuncu.para >= 300) {
                 oyuncu.para -= 300;
                 eyalet.sivil = (eyalet.sivil || 0) + 1;
             } else {
-                socket.emit('hata', 'Yetersiz altın!');
+                socket.emit('hataMesaji', 'Yetersiz altın!');
             }
         }
 
-        io.emit('guncelleme', gameState);
+        io.emit('stateGuncelle', gameState);
     });
 
-    // 3. SAVAŞ VE SALDIRI SİSTEMİ
-    socket.on('savasAc', (data) => {
+    // 3. SAVAŞ VE SALDIRI SİSTEMİ (ÖMER İÇİN ÖZEL DÜZELTİLDİ)
+    socket.on('saldiri', (data) => { // savasAc -> saldiri yapıldı
         const oyuncu = gameState.oyuncular[socket.id];
         if (!oyuncu) return;
 
-        const { saldiranId, savunanId } = data;
-        const saldiranEyalet = gameState.eyaletler[saldiranId];
+        const savunanId = data.id;
         const savunanEyalet = gameState.eyaletler[savunanId];
 
-        if (!saldiranEyalet || saldiranEyalet.sahibi !== oyuncu.ulke) return;
+        // Savunan eyalet geçerli değilse veya zaten bizimse iptal et
         if (!savunanEyalet || savunanEyalet.sahibi === oyuncu.ulke) return;
 
+        // Kendi eyaletlerinden en çok ordusu olanı otomatik "saldıran" olarak seç
+        let saldiranId = null;
+        let maxOrdu = -1;
+        Object.keys(gameState.eyaletler).forEach(eId => {
+            let e = gameState.eyaletler[eId];
+            if (e.sahibi === oyuncu.ulke && (e.ordu || 1) > maxOrdu) {
+                maxOrdu = (e.ordu || 1);
+                saldiranId = eId;
+            }
+        });
+
+        if (!saldiranId) {
+            socket.emit('hataMesaji', 'Saldıracak sınır ordun bulunamadı!');
+            return;
+        }
+
+        const saldiranEyalet = gameState.eyaletler[saldiranId];
+
         // Basit Zar/Güç Mekaniği
-        let saldiranGucu = saldiranEyalet.ordu * (Math.random() * 0.4 + 0.8);
-        let savunanGucu = (savunanEyalet.ordu || 1) * (Math.random() * 0.4 + 0.9); // Savunma avantajı
+        let saldiranGucu = (saldiranEyalet.ordu || 1) * (Math.random() * 0.4 + 0.8);
+        let savunanGucu = (savunanEyalet.ordu || 1) * (Math.random() * 0.4 + 0.9); 
 
         if (saldiranGucu > savunanGucu) {
             // Saldıran kazandı
@@ -129,9 +139,9 @@ io.on('connection', (socket) => {
 
             socket.emit('savasSonucu', { kazanan: true, mesaj: 'Zafer! Eyalet ele geçirildi!' });
             
-            // Eğer savunma yapanın hiç eyaleti kalmadıysa İlhak (Annexation) tetikle
+            // İlhak (Annexation) Sistemi
             let kalanEyaletSayisi = Object.values(gameState.eyaletler).filter(e => e.sahibi === eskiSahibi).length;
-            if (kalanEyaletSayisi === 0 && eskiSahibi) {
+            if (kalanEyaletSayisi === 0 && eskiSahibi && eskiSahibi !== "Nötr") {
                 io.emit('ulkeIlhakEdildi', { kazanan: oyuncu.ulke, kaybeden: eskiSahibi, mesaj: `${eskiSahibi} devleti tamamen ilhak edildi!` });
             }
         } else {
@@ -141,7 +151,7 @@ io.on('connection', (socket) => {
             socket.emit('savasSonucu', { kazanan: false, mesaj: 'Saldırı başarısız oldu, ordumuz eridi!' });
         }
 
-        io.emit('guncelleme', gameState);
+        io.emit('stateGuncelle', gameState);
     });
 
     socket.on('disconnect', () => {
@@ -149,14 +159,13 @@ io.on('connection', (socket) => {
     });
 });
 
-// Gün Sayacı ve Dinamik Maaş Sistemi (Sivil Fabrika Odaklı)
+// Gün Sayacı ve Dinamik Maaş Sistemi
 setInterval(() => {
     gameState.gun++;
     
     Object.keys(gameState.oyuncular).forEach(socketId => {
         const oyuncu = gameState.oyuncular[socketId];
         
-        // Oyuncunun dünyada sahip olduğu tüm eyaletlerdeki sivil fabrikaları topla
         let toplamSivilFabrika = 0;
         
         Object.keys(gameState.eyaletler).forEach(eyaletId => {
@@ -166,17 +175,15 @@ setInterval(() => {
             }
         });
 
-        // Gelir Hesaplama: Temel Gelir (50) + (Fabrika Sayısı * 2)
         let fabrikaGeliri = toplamSivilFabrika * 2;
         let toplamKazanc = 50 + fabrikaGeliri;
 
         oyuncu.para += toplamKazanc;
     });
 
-    io.emit('guncelleme', gameState);
-}, 20000); // Her 20 saniyede bir gün döner ve para eklenir
+    io.emit('stateGuncelle', gameState);
+}, 20000); 
 
-// Render ve Yerel Port Ayarı
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Sunucu ${PORT} portunda başarıyla çalışıyor...`);
